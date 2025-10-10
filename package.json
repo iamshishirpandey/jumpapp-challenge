@@ -9,10 +9,16 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@auth/prisma-adapter": "^2.11.0",
     "@heroui/react": "^2.8.5",
+    "@prisma/client": "^6.17.1",
     "framer-motion": "^12.23.24",
+    "googleapis": "^162.0.0",
+    "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.545.0",
     "next": "13.5.11",
+    "next-auth": "^4.24.11",
+    "prisma": "^6.17.1",
     "react": "^18",
     "react-dom": "^18"
   },

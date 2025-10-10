@@ -1,15 +1,15 @@
-import React from 'react';
-import Image from 'next/image';
+import React from 'react'
+import Image from 'next/image'
+import { signIn, getSession } from 'next-auth/react'
+import { GetServerSideProps } from 'next'
 
 const LoginPage = () => {
   const handleGoogleSignIn = () => {
-    console.log('Google sign in clicked');
-  };
-
+    signIn('google', { callbackUrl: '/dashboard' })
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-white">
-
       <div className="mb-12">
         <Image
           src="/assets/jump_logo.svg"
@@ -20,21 +20,16 @@ const LoginPage = () => {
         />
       </div>
 
-
       <div className="w-full max-w-[480px] bg-white border border-gray-200 rounded-2xl shadow-sm p-12">
-
         <h1 className="text-4xl font-light text-center text-gray-900 mb-8">
           Welcome back!
         </h1>
-
 
         <p className="text-center text-gray-600 text-base mb-8">
           Sign in to your account to continue
         </p>
 
-
         <div className="space-y-3">
-
           <button
             onClick={handleGoogleSignIn}
             className="w-full h-12 flex items-center justify-center gap-3 px-6 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200"
@@ -65,10 +60,7 @@ const LoginPage = () => {
               Sign in with Google
             </span>
           </button>
-
-
         </div>
-
 
         <div className="mt-12 text-center space-y-2">
           <div className="flex justify-center gap-4">
@@ -91,7 +83,24 @@ const LoginPage = () => {
         </div>
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default LoginPage;
+export const getServerSideProps: GetServerSideProps = async (context) => {
+  const session = await getSession(context)
+  
+  if (session) {
+    return {
+      redirect: {
+        destination: '/dashboard',
+        permanent: false
+      }
+    }
+  }
+  
+  return {
+    props: {}
+  }
+}
+
+export default LoginPage
