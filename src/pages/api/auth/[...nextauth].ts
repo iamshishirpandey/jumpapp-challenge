@@ -1,6 +1,7 @@
 import NextAuth from 'next-auth'
 import GoogleProvider from 'next-auth/providers/google'
 import { NextAuthOptions } from 'next-auth'
+import { prisma } from '@/lib/prisma'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -55,6 +56,25 @@ export const authOptions: NextAuthOptions = {
         }
       }
       return session
+    },
+    async signIn({ user, account, profile }) {
+      // Ensure user exists in database for HubSpot integration
+      if (user.email) {
+        await prisma.user.upsert({
+          where: { email: user.email },
+          update: {
+            name: user.name,
+            image: user.image,
+          },
+          create: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            image: user.image,
+          },
+        })
+      }
+      return true
     }
   },
   pages: {

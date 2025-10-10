@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { signOut, useSession } from 'next-auth/react'
 import { useRouter } from 'next/router'
-import { MessageCircle, Plus, User, Send, SquarePen, LogOut, ChevronUp } from 'lucide-react'
+import { MessageCircle, Plus, User, Send, SquarePen, LogOut, ChevronUp, Check, X } from 'lucide-react'
+import { useHubSpot } from '@/hooks/useHubSpot'
 import {
   Sidebar,
   SidebarContent,
@@ -57,6 +58,7 @@ const SidebarHeaderContent = () => {
 const Dashboard = () => {
   const { data: sessionData, status } = useSession()
   const router = useRouter()
+  const hubspot = useHubSpot()
   const [selectedChat, setSelectedChat] = useState<string | null>(null)
   const [chats, setChats] = useState([
     { id: '1', title: 'Sample History 1' },
@@ -72,6 +74,15 @@ const Dashboard = () => {
       router.push('/login')
     }
   }, [status, router])
+
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    if (urlParams.get('hubspot') === 'connected') {
+      router.replace('/dashboard', undefined, { shallow: true })
+      hubspot.refetch()
+    }
+  }, [router, hubspot])
 
   const handleSignOut = () => {
     signOut({ callbackUrl: '/login' })
@@ -115,10 +126,52 @@ const Dashboard = () => {
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton onClick={handleNewChat} tooltip="New Chat" className="font-medium px-2 h-10">
-                    <SquarePen className="h-5 w-5 shrink-0" />
-                    <span className="text-sm">New chat</span>
+                  <SidebarMenuButton onClick={handleNewChat} tooltip="New Chat" className="font-medium px-2 h-10 flex items-center">
+                    <SquarePen className="h-7 w-7 shrink-0 mr-0.5" />
+                    <span className="text-sm font-medium">New chat</span>
                   </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
+                  {hubspot.connected ? (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-2 mx-1">
+                      <div className="flex items-center gap-2">
+                 
+                        <img 
+                          src="/assets/hubspot_logo.png" 
+                          alt="HubSpot" 
+                          className="h-6 w-6 shrink-0"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm font-medium text-green-800">HubSpot Connected</span>
+                          </div>
+                          {hubspot.portalId && (
+                            <span className="text-xs text-green-600">Portal: {hubspot.portalId}</span>
+                          )}
+                        </div>
+                        <button
+                          onClick={hubspot.disconnect}
+                          className="text-red-500 hover:text-red-700 transition-colors"
+                          title="Disconnect HubSpot"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <SidebarMenuButton 
+                      onClick={hubspot.connect}
+                      tooltip="Connect to HubSpot" 
+                      className="font-medium pl-1 pr-2 h-10 flex items-center"
+                    >
+                      <img 
+                        src="/assets/hubspot_logo.png" 
+                        alt="HubSpot" 
+                        className="h-7 w-7 shrink-0 mr-0.5"
+                      />
+                      <span className="text-sm font-medium">Connect to HubSpot</span>
+                    </SidebarMenuButton>
+                  )}
                 </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
@@ -191,7 +244,7 @@ const Dashboard = () => {
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2">
           <div className="flex items-center gap-2 px-4">
-            {/* Trigger moved to sidebar header */}
+            <SidebarTrigger className="md:hidden" />
           </div>
         </header>
 
