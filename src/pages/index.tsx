@@ -1,9 +1,7 @@
-import React from 'react'
+import LoginPage from './login'
 
 const index = () => {
-  return (
-    <div>index</div>
-  )
+  return <LoginPage />
 }
 
 export default index
