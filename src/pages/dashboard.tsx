@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { signOut, useSession } from 'next-auth/react'
+import { signOut } from 'next-auth/react'
 import { useRouter } from 'next/router'
 import { User, Send, SquarePen, LogOut, ChevronUp, X, Paperclip, ThumbsUp, ThumbsDown, Share, MoreHorizontal, Settings, Loader2, ExternalLink } from 'lucide-react'
+import { useAuth } from '@/hooks/useAuth'
 import { useHubSpot } from '@/hooks/useHubSpot'
 import {
   Sidebar,
@@ -73,7 +74,7 @@ interface Chat {
 }
 
 const Dashboard = () => {
-  const { data: sessionData, status } = useSession()
+  const { user, isLoading: isAuthLoading, isAuthenticated } = useAuth()
   const router = useRouter()
   const hubspot = useHubSpot()
   const [selectedChatId, setSelectedChatId] = useState<string | null>('new')
@@ -81,29 +82,28 @@ const Dashboard = () => {
   const [messages, setMessages] = useState<Message[]>([])
   const [chats, setChats] = useState<Chat[]>([])
   const [isLoadingChats, setIsLoadingChats] = useState(true)
-  
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/login')
-    }
-  }, [status, router])
-
+  const [isCreatingChat, setIsCreatingChat] = useState(false)
 
   useEffect(() => {
-    if (status === 'authenticated') {
+    if (isAuthenticated && !isAuthLoading) {
       loadChats()
     }
-  }, [status])
+  }, [isAuthenticated, isAuthLoading])
 
 
   useEffect(() => {
+    if (isCreatingChat) {
+      // Don't reset messages when we're creating a new chat
+      return
+    }
+    
     if (selectedChatId && selectedChatId !== 'new') {
       loadChatMessages(selectedChatId)
     } else if (selectedChatId === 'new') {
       setMessages([])
       setCurrentChat(null)
     }
-  }, [selectedChatId])
+  }, [selectedChatId, isCreatingChat])
 
 
   useEffect(() => {
@@ -157,9 +157,11 @@ const Dashboard = () => {
   const sendMessage = async (content: string) => {
     if (!content.trim()) return
 
-
     let chatId = selectedChatId
+    
+
     if (!chatId || chatId === 'new') {
+      setIsCreatingChat(true)
       try {
         const response = await fetch('/api/chats', {
           method: 'POST',
@@ -168,16 +170,19 @@ const Dashboard = () => {
         })
         const newChat = await response.json()
         if (response.ok) {
-          setChats([newChat, ...chats])
-          setSelectedChatId(newChat.id)
-          setCurrentChat(newChat)
           chatId = newChat.id
+          setCurrentChat(newChat)
+          setSelectedChatId(newChat.id)
+          // Add the new chat to the list immediately
+          setChats(prevChats => [newChat, ...prevChats])
         } else {
           console.error('Failed to create chat')
+          setIsCreatingChat(false)
           return
         }
       } catch (error) {
         console.error('Error creating chat:', error)
+        setIsCreatingChat(false)
         return
       }
     }
@@ -230,7 +235,9 @@ const Dashboard = () => {
       ))
 
 
-      loadChats()
+      if (isCreatingChat) {
+        setIsCreatingChat(false)
+      }
 
     } catch (error) {
       console.error('Error sending message:', error)
@@ -246,27 +253,22 @@ const Dashboard = () => {
       setMessages(prev => prev.map(msg => 
         msg.id === loadingMessage.id ? errorMessage : msg
       ))
+      
+      if (isCreatingChat) {
+        setIsCreatingChat(false)
+      }
     }
   }
-
-  if (status === 'loading') {
+  if (isAuthLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-lg">Loading...</div>
       </div>
     )
   }
-
-  if (status === 'unauthenticated' || !sessionData?.session?.user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-lg">Redirecting to login...</div>
-      </div>
-    )
+  if (!user) {
+    return null
   }
-
-  const { session } = sessionData
-  const { user } = session
 
   return (
     <SidebarProvider>
@@ -449,13 +451,6 @@ const Dashboard = () => {
                   <div className="mx-auto max-w-3xl space-y-6">
                     {messages.map((message) => (
                       <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        {message.role === 'assistant' && (
-                          <div className="flex-shrink-0">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-green-500 to-teal-600">
-                              <span className="text-xs font-bold text-white">AI</span>
-                            </div>
-                          </div>
-                        )}
                         <div className={`flex flex-col space-y-2 ${message.role === 'user' ? 'items-end' : 'items-start max-w-[80%]'}`}>
                           <div className={`rounded-2xl px-4 py-2 ${
                             message.role === 'user' 
@@ -506,21 +501,7 @@ const Dashboard = () => {
                             </div>
                           )}
                         </div>
-                        {message.role === 'user' && (
-                          <div className="flex-shrink-0">
-                            {sessionData?.session?.user?.image ? (
-                              <img 
-                                src={sessionData.session.user.image} 
-                                alt={sessionData.session.user.name || ''} 
-                                className="h-8 w-8 rounded-full"
-                              />
-                            ) : (
-                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-600">
-                                <User className="h-4 w-4 text-white" />
-                              </div>
-                            )}
-                          </div>
-                        )}
+                  
                       </div>
                     ))}
                   </div>

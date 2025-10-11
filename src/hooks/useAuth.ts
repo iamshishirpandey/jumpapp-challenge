@@ -1,12 +1,12 @@
 import { useSession } from 'next-auth/react'
 
 export function useAuth() {
-  const { data: session, status } = useSession()
+  const { data: sessionData, status } = useSession()
   
   return {
-    user: session?.user,
-    accessToken: session?.accessToken,
+    user: sessionData?.session?.user || sessionData?.user,
+    accessToken: sessionData?.accessToken,
     isLoading: status === 'loading',
-    isAuthenticated: !!session
+    isAuthenticated: !!sessionData
   }
 }
