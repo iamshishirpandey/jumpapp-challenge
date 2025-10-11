@@ -49,27 +49,13 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
     try {
       if (showRefreshing) setIsRefreshing(true);
       
-      console.log('=== SETTINGS DIALOG DEBUG ===');
-      console.log('Fetching sync status...');
       const response = await fetch('/api/sync/status')
-      console.log('Response status:', response.status);
-      console.log('Response ok:', response.ok);
       
       if (response.ok) {
         const data = await response.json()
-        console.log('Sync status response data:', JSON.stringify(data, null, 2));
-        console.log('HubSpot connected:', data.hubspot?.connected);
-        console.log('Gmail connected:', data.gmail?.connected);
-        console.log('Calendar connected:', data.calendar?.connected);
         setSyncStatus(data)
-      } else {
-        console.error('Response not ok:', response.status, response.statusText);
-        const errorData = await response.text();
-        console.error('Error response body:', errorData);
       }
-      console.log('==============================');
     } catch (error) {
-      console.error('Failed to fetch sync status:', error)
     } finally {
       if (showRefreshing) setIsRefreshing(false);
     }
@@ -92,24 +78,9 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
       const data = await response.json()
 
       if (response.ok) {
-        console.log(`${type} sync successful:`, data)
         await fetchSyncStatus()
-        
-        // Show success feedback
-        const successMessage = type === 'gmail' 
-          ? `Synced ${data.emailsCount} emails successfully`
-          : type === 'hubspot' 
-          ? `Synced ${data.contactsCount} contacts and ${data.notesCount} notes successfully`
-          : `Synced ${data.eventsCount} calendar events successfully`
-        
-        console.log(successMessage)
-      } else {
-        console.error(`${type} sync failed:`, data.error)
-        console.error(`Failed to sync ${type}: ${data.error}`)
       }
     } catch (error) {
-      console.error(`Failed to sync ${type}:`, error)
-      console.error(`Failed to sync ${type}: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setIsLoading(null)
     }
@@ -146,7 +117,6 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
         </DialogHeader>
         
         <div className="space-y-4">
-          {/* Gmail Sync */}
           <div className="rounded-lg border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
@@ -187,7 +157,6 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
             </div>
           </div>
 
-          {/* HubSpot Sync */}
           <div className="rounded-lg border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
@@ -227,11 +196,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    console.log('HubSpot sync button clicked');
-                    console.log('Current HubSpot status:', syncStatus.hubspot);
-                    handleSync('hubspot');
-                  }}
+                  onClick={() => handleSync('hubspot')}
                   disabled={isLoading === 'hubspot'}
                 >
                   {isLoading === 'hubspot' ? 'Syncing...' : 'Sync Now'}
@@ -240,10 +205,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    console.log('Connecting to HubSpot...');
-                    window.location.href = '/api/hubspot/oauth';
-                  }}
+                  onClick={() => window.location.href = '/api/hubspot/oauth'}
                 >
                   Connect HubSpot
                 </Button>
@@ -251,7 +213,6 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
             </div>
           </div>
 
-          {/* Calendar Sync */}
           <div className="rounded-lg border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">

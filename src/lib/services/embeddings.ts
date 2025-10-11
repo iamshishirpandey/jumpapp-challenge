@@ -7,17 +7,24 @@ export class EmbeddingService {
   private embeddingModel: any;
 
   constructor() {
-    this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const apiKey = process.env.GEMINI_API_KEY;
+    this.genAI = new GoogleGenerativeAI(apiKey || 'dummy-key');
+    this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
     this.embeddingModel = this.genAI.getGenerativeModel({ model: 'text-embedding-004' });
   }
 
   async generateEmbedding(text: string): Promise<number[]> {
     try {
+      if (!process.env.GEMINI_API_KEY) {
+        return [];
+      }
       const result = await this.embeddingModel.embedContent(text);
       return result.embedding.values;
     } catch (error) {
+      if (error instanceof Error && error.message.includes('API key')) {
+        console.error('Gemini API key error:', error.message);
+        return [];
+      }
       console.error('Error generating embedding:', error);
       throw error;
     }
@@ -30,7 +37,7 @@ export class EmbeddingService {
       const response = await result.response;
       return response.text();
     } catch (error) {
-      console.error('Error generating summary:', error);
+      console.error('Error generating text summary:', error);
       return text.substring(0, 200); 
     }
   }
@@ -44,19 +51,16 @@ export class EmbeddingService {
     metadata?: any
   ) {
     try {
-      console.log(`Creating document for ${sourceType} with ID ${sourceId}`);
-      
-
       const embedText = `${title || ''} ${content}`.trim().substring(0, 3000); 
-      console.log(`Generating embedding for text (length: ${embedText.length})`);
       
       let embeddingString = null;
       try {
         const embedding = await this.generateEmbedding(embedText);
-        embeddingString = `[${embedding.join(',')}]`;
-        console.log(`Successfully generated embedding (dimension: ${embedding.length})`);
+        if (embedding && embedding.length > 0) {
+          embeddingString = `[${embedding.join(',')}]`;
+        }
       } catch (embedError) {
-        console.error('Failed to generate embedding, storing without vector:', embedError);
+        console.error('Failed to generate embedding for document, storing without vector:', embedError);
       }
 
       const document = await prisma.$executeRaw`
@@ -83,7 +87,7 @@ export class EmbeddingService {
           NOW(),
           NOW()
         )
-        ON CONFLICT ("sourceType", "sourceId")
+        ON CONFLICT ("userId", "sourceId")
         DO UPDATE SET
           title = EXCLUDED.title,
           content = EXCLUDED.content,
@@ -93,7 +97,6 @@ export class EmbeddingService {
         RETURNING id
       `;
 
-      console.log(`Successfully created/updated document for ${sourceType}: ${sourceId}`);
       return document;
     } catch (error) {
       console.error(`Error creating document for ${sourceType} ${sourceId}:`, error);
@@ -101,7 +104,6 @@ export class EmbeddingService {
     }
   }
 
-  // Vector similarity search using pgvector
   async searchSimilarDocuments(
     userId: string,
     query: string,
@@ -109,6 +111,13 @@ export class EmbeddingService {
     threshold: number = 0.5
   ) {
     try {
+      const documentCount = await prisma.document.count({
+        where: { userId }
+      });
+      
+      if (documentCount === 0) {
+        return [];
+      }
 
       let useVectorSearch = true;
       let queryEmbeddingString = null;
@@ -116,15 +125,15 @@ export class EmbeddingService {
       try {
         const queryEmbedding = await this.generateEmbedding(query);
         queryEmbeddingString = `[${queryEmbedding.join(',')}]`;
-        console.log('Generated query embedding successfully');
       } catch (embedError) {
-        console.error('Failed to generate query embedding:', embedError);
+        console.error('Failed to generate query embedding, falling back to text search:', embedError);
         useVectorSearch = false;
       }
       
+      let results: any = null;
+      
       if (useVectorSearch && queryEmbeddingString) {
-        // Use cosine similarity search with pgvector
-        const results = await prisma.$queryRaw`
+        results = await prisma.$queryRaw`
           SELECT 
             id,
             "userId",
@@ -145,41 +154,51 @@ export class EmbeddingService {
         `;
         
         if (results && (results as any[]).length > 0) {
-          console.log(`Found ${(results as any[]).length} results with vector search`);
           return results;
         }
       }
 
-      // If no results with vector search fallback to text search
       if (!results || (results as any[]).length === 0) {
-        console.log('No vector results found, falling back to text search');
+        const keywords = query.toLowerCase().split(' ').filter(word => word.length > 2);
+        const searchPattern = keywords.map(k => `%${k}%`).join(' OR ');
+        
         const fallbackResults = await prisma.$queryRaw`
           SELECT 
-            id,
-            "userId",
-            "sourceType",
-            "sourceId",
-            title,
-            content,
-            metadata,
-            "createdAt",
-            "updatedAt",
-            ts_rank(
-              to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(content, '')),
-              plainto_tsquery('english', ${query})
-            ) as similarity
-          FROM "Document"
-          WHERE "userId" = ${userId}
-            AND to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(content, '')) @@ plainto_tsquery('english', ${query})
-          ORDER BY similarity DESC
+            d.id,
+            d."userId",
+            d."sourceType",
+            d."sourceId",
+            d.title,
+            d.content,
+            d.metadata,
+            d."createdAt",
+            d."updatedAt",
+            CASE
+              WHEN LOWER(d.content) LIKE '%' || LOWER(${query}) || '%' THEN 1.0
+              WHEN LOWER(d.title) LIKE '%' || LOWER(${query}) || '%' THEN 0.9
+              ELSE 0.5
+            END as similarity
+          FROM "Document" d
+          WHERE d."userId" = ${userId}
+            AND (
+              LOWER(d.content) LIKE '%' || LOWER(${query}) || '%'
+              OR LOWER(d.title) LIKE '%' || LOWER(${query}) || '%'
+              OR EXISTS (
+                SELECT 1 FROM unnest(string_to_array(LOWER(${query}), ' ')) AS keyword
+                WHERE LOWER(d.content) LIKE '%' || keyword || '%'
+                  AND length(keyword) > 2
+              )
+            )
+          ORDER BY similarity DESC, d."createdAt" DESC
           LIMIT ${limit}
         `;
+        
         return fallbackResults;
       }
 
       return results;
     } catch (error) {
-      console.error('Error searching documents:', error);
+      console.error('Error in searchSimilarDocuments:', error);
       try {
         const fallbackResults = await prisma.$queryRaw`
           SELECT 
@@ -210,15 +229,13 @@ export class EmbeddingService {
     }
   }
 
-  // Generate RAG response using relevant context
   async generateRAGResponse(userId: string, query: string): Promise<{
     response: string;
     sources: any[];
     relevantDocuments: any[];
   }> {
     try {
-
-      const relevantDocs = await this.searchSimilarDocuments(userId, query, 5, 0.5);
+      const relevantDocs = await this.searchSimilarDocuments(userId, query, 5, 0.3);
       
       if (!relevantDocs || relevantDocs.length === 0) {
         return {
@@ -227,7 +244,6 @@ export class EmbeddingService {
           relevantDocuments: []
         };
       }
-
 
       const context = (relevantDocs as any[]).map((doc, index) => {
         const metadata = doc.metadata || {};
@@ -250,7 +266,6 @@ export class EmbeddingService {
         
         return `[Source ${index + 1}] ${sourceInfo}:\n${doc.content}\n`;
       }).join('\n');
-
 
       const prompt = `You are an AI assistant that helps users find information from their personal data including emails, contacts, calendar events, and notes. Use the provided context to answer the user's question accurately and helpfully.
 
@@ -298,7 +313,6 @@ Answer:`;
     }
   }
 
-
   async analyzeContent(content: string, query: string): Promise<number> {
     try {
       const prompt = `
@@ -317,7 +331,7 @@ Answer:`;
       
       return isNaN(score) ? 0 : Math.min(1, Math.max(0, score));
     } catch (error) {
-      console.error('Error analyzing content:', error);
+      console.error('Error analyzing content relevance:', error);
       const queryWords = query.toLowerCase().split(/\s+/);
       const contentLower = content.toLowerCase();
       const matches = queryWords.filter(word => contentLower.includes(word));

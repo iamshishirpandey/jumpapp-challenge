@@ -26,11 +26,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const gmailService = new GmailService(user.googleRefreshToken);
       const emails = await gmailService.fetchEmails(user.id, query, maxResults);
-
-      // Process emails for RAG
+      
       const embeddingService = new EmbeddingService();
       const embeddings = await Promise.allSettled(
-        emails.map(email => embeddingService.processEmailForRAG(user.id, email))
+        emails.map(async (email) => {
+          try {
+            await embeddingService.processEmailForRAG(user.id, email);
+            return email;
+          } catch (error) {
+            throw error;
+          }
+        })
       );
 
       const successCount = embeddings.filter(r => r.status === 'fulfilled').length;
@@ -39,10 +45,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         success: true,
         emailsCount: emails.length,
         embeddingsCreated: successCount,
-        emails: emails.slice(0, 10), // Return first 10 emails as preview
+        emails: emails.slice(0, 10),
       });
     } catch (error) {
-      console.error('Gmail sync error:', error);
       return res.status(500).json({ 
         error: 'Failed to sync Gmail', 
         details: error instanceof Error ? error.message : 'Unknown error' 
@@ -85,7 +90,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         offset,
       });
     } catch (error) {
-      console.error('Get emails error:', error);
       return res.status(500).json({ 
         error: 'Failed to get emails', 
         details: error instanceof Error ? error.message : 'Unknown error' 

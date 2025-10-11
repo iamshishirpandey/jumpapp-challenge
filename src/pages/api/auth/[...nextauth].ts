@@ -76,58 +76,36 @@ export const authOptions: NextAuthOptions = {
             },
           })
           
-          // Automatically sync Gmail and Calendar data after Google connection
           if (account?.provider === 'google' && account.refresh_token) {
             try {
-              console.log('Starting automatic Google data sync for user:', user.email)
-              
               const embeddingService = new EmbeddingService()
               
-              // Sync Gmail
               try {
                 const gmailService = new GmailService(account.refresh_token)
                 const emails = await gmailService.fetchEmails(updatedUser.id, 'newer_than:7d', 50)
-                console.log(`Fetched ${emails.length} emails`)
                 
-                const emailEmbeddings = await Promise.allSettled(
+                await Promise.allSettled(
                   emails.map(email => embeddingService.processEmailForRAG(updatedUser.id, email))
                 )
-                
-                const successfulEmails = emailEmbeddings.filter(r => r.status === 'fulfilled').length
-                console.log(`Successfully created embeddings for ${successfulEmails} emails`)
-              } catch (gmailError) {
-                console.error('Error syncing Gmail:', gmailError)
-              }
+              } catch (gmailError) {}
               
-              // Sync Calendar
               try {
                 const calendarService = new CalendarService(account.refresh_token)
                 const events = await calendarService.fetchEvents(updatedUser.id)
-                console.log(`Fetched ${events.length} calendar events`)
                 
-                const eventEmbeddings = await Promise.allSettled(
+                await Promise.allSettled(
                   events.map(event => embeddingService.processEventForRAG(updatedUser.id, event))
                 )
-                
-                const successfulEvents = eventEmbeddings.filter(r => r.status === 'fulfilled').length
-                console.log(`Successfully created embeddings for ${successfulEvents} calendar events`)
-              } catch (calendarError) {
-                console.error('Error syncing Calendar:', calendarError)
-              }
-            } catch (syncError) {
-              console.error('Error during automatic Google sync:', syncError)
-              // Don't fail the sign-in if sync fails
-            }
+              } catch (calendarError) {}
+            } catch (syncError) {}
           }
         }
         return true
       } catch (error) {
-        console.error('Error in signIn callback:', error)
         return false
       }
     },
     async redirect({ url, baseUrl }) {
-      // Ensure the redirect URL is safe and doesn't contain invalid characters
       if (url.startsWith('/')) {
         return `${baseUrl}${url}`
       } else if (url.startsWith(baseUrl)) {

@@ -48,18 +48,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           data: { updatedAt: new Date() },
         });
       } catch (error) {
-        console.error('Error saving user message:', error);
       }
     }
 
     const embeddingService = new EmbeddingService();
+    
     const results: any = await embeddingService.searchSimilarDocuments(
       user.id,
       query,
       limit,
       threshold
     );
-
 
     const enrichedResults = await Promise.all(
       (results as any[]).map(async (doc: any) => {
@@ -128,9 +127,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })
     );
 
-    const aiResponse = enrichedResults.length > 0
-      ? `Found ${enrichedResults.length} relevant results for your query.`
-      : 'No relevant results found for your query.';
+    
+    let aiResponse = '';
+    
+    if (enrichedResults.length > 0) {
+      try {
+        const ragResponse = await embeddingService.generateRAGResponse(user.id, query);
+        aiResponse = ragResponse.response;
+      } catch (ragError) {
+        aiResponse = `Found ${enrichedResults.length} relevant results for your query.`;
+      }
+    } else {
+      aiResponse = 'No relevant results found for your query. Try syncing your data first.';
+    }
 
     if (chatId) {
       try {
@@ -142,7 +151,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           },
         });
       } catch (error) {
-        console.error('Error saving assistant message:', error);
       }
     }
 
@@ -155,7 +163,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       chatId,
     });
   } catch (error) {
-    console.error('Search error:', error);
     return res.status(500).json({ 
       error: 'Search failed', 
       details: error instanceof Error ? error.message : 'Unknown error' 
