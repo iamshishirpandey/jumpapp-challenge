@@ -123,7 +123,6 @@ const ChatPage = () => {
         setChats(data)
       }
     } catch (error) {
-      console.error('Error loading chats:', error)
     } finally {
       setIsLoadingChats(false)
     }
@@ -139,7 +138,6 @@ const ChatPage = () => {
         setMessages(data.messages || [])
       }
     } catch (error) {
-      console.error('Error loading chat messages:', error)
     }
   }
 
@@ -173,12 +171,10 @@ const ChatPage = () => {
           
           window.history.pushState(null, '', `/${newChat.id}`)
         } else {
-          console.error('Failed to create chat')
           setIsCreatingChat(false)
           return
         }
       } catch (error) {
-        console.error('Error creating chat:', error)
         setIsCreatingChat(false)
         return
       }
@@ -234,7 +230,6 @@ const ChatPage = () => {
       }
 
     } catch (error) {
-      console.error('Error sending message:', error)
       
       const errorMessage: Message = {
         id: loadingMessage.id,
@@ -461,18 +456,62 @@ const ChatPage = () => {
                           )}
                         </div>
                         {message.sources && message.sources.length > 0 && (
-                          <div className="text-xs space-y-1">
-                            <p className="text-gray-500 font-medium">Sources:</p>
-                            {message.sources.map((source, index) => (
-                              <div key={index} className="flex items-center gap-1 text-gray-600 bg-gray-50 rounded px-2 py-1">
-                                <ExternalLink className="h-3 w-3" />
-                                <span className="capitalize">{source.sourceType.replace('_', ' ')}</span>
-                                {source.title && <span>: {source.title}</span>}
-                                <span className="ml-auto text-gray-400">
-                                  {Math.round((source.similarity || 0) * 100)}% match
-                                </span>
+                          <div className="mt-4 space-y-3">
+                            <p className="text-sm text-gray-600 font-medium">Sources:</p>
+                            {message.sources.map((source, index) => {
+                              return (
+                              <div key={index} className="border border-gray-200 rounded-lg p-3 bg-white hover:shadow-sm transition-shadow">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <button
+                                        onClick={() => {
+                                          if (source.sourceType === 'email' && source.gmailId) {
+                                            const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${source.gmailId}`;
+                                            window.open(gmailUrl, '_blank');
+                                          }
+                                        }}
+                                        className={`${source.sourceType === 'email' && source.gmailId ? 'text-blue-500 hover:text-blue-700' : 'text-gray-400'} transition-colors`}
+                                        title={source.sourceType === 'email' && source.gmailId ? "Open email in Gmail" : "Not available"}
+                                      >
+                                        <ExternalLink className="h-4 w-4" />
+                                      </button>
+                                      <span className="text-sm font-medium text-gray-700 capitalize">
+                                        {source.sourceType.replace('_', ' ')}
+                                      </span>
+                                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                                        {Math.round((source.similarity || 0) * 100)}% match
+                                      </span>
+                                    </div>
+                                    {source.title && (
+                                      <h4 className="text-sm font-medium text-gray-900 mb-1">{source.title}</h4>
+                                    )}
+                                    {source.metadata?.from && (
+                                      <p className="text-xs text-gray-600 mb-1">From: {source.metadata.from}</p>
+                                    )}
+                                    {source.metadata?.date && (
+                                      <p className="text-xs text-gray-600 mb-2">
+                                        Date: {new Date(source.metadata.date).toLocaleDateString()}
+                                      </p>
+                                    )}
+                                    <p className="text-xs text-gray-500 line-clamp-2">{source.preview}</p>
+                                  </div>
+                                  {source.sourceType === 'email' && source.gmailId && (
+                                    <button
+                                      onClick={() => {
+                                        const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${source.gmailId}`;
+                                        window.open(gmailUrl, '_blank');
+                                      }}
+                                      className="ml-3 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                      Open
+                                    </button>
+                                  )}
+                                </div>
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                         {message.role === 'assistant' && (

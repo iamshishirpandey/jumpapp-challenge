@@ -25,7 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const { query, limit = 10, threshold = 0.7, chatId } = req.body;
+    const { query, limit = 5, threshold = 0.75, chatId } = req.body;
 
     if (!query) {
       return res.status(400).json({ error: 'Query is required' });

@@ -148,7 +148,7 @@ export class EmbeddingService {
           FROM "Document"
           WHERE "userId" = ${userId}
             AND embedding IS NOT NULL
-            AND 1 - (embedding <=> ${queryEmbeddingString}::vector) > ${threshold}
+            AND 1 - (embedding <=> ${queryEmbeddingString}::vector) >= ${threshold}
           ORDER BY embedding <=> ${queryEmbeddingString}::vector
           LIMIT ${limit}
         `;
@@ -159,8 +159,8 @@ export class EmbeddingService {
       }
 
       if (!results || (results as any[]).length === 0) {
-        const keywords = query.toLowerCase().split(' ').filter(word => word.length > 2);
-        const searchPattern = keywords.map(k => `%${k}%`).join(' OR ');
+        const words = query.toLowerCase().split(' ').filter(word => word.length >= 3);
+        const targetKeyword = words[words.length - 1] || query.toLowerCase();
         
         const fallbackResults = await prisma.$queryRaw`
           SELECT 
@@ -174,31 +174,29 @@ export class EmbeddingService {
             d."createdAt",
             d."updatedAt",
             CASE
-              WHEN LOWER(d.content) LIKE '%' || LOWER(${query}) || '%' THEN 1.0
-              WHEN LOWER(d.title) LIKE '%' || LOWER(${query}) || '%' THEN 0.9
-              ELSE 0.5
+              WHEN LOWER(d.content) LIKE '%' || LOWER(${targetKeyword}) || '%' THEN 0.95
+              WHEN LOWER(d.title) LIKE '%' || LOWER(${targetKeyword}) || '%' THEN 0.90
+              WHEN LOWER(d.content) LIKE '%' || LOWER(${query}) || '%' THEN 0.85
+              WHEN LOWER(d.title) LIKE '%' || LOWER(${query}) || '%' THEN 0.80
+              ELSE 0.1
             END as similarity
           FROM "Document" d
           WHERE d."userId" = ${userId}
             AND (
-              LOWER(d.content) LIKE '%' || LOWER(${query}) || '%'
+              LOWER(d.content) LIKE '%' || LOWER(${targetKeyword}) || '%'
+              OR LOWER(d.title) LIKE '%' || LOWER(${targetKeyword}) || '%'
+              OR LOWER(d.content) LIKE '%' || LOWER(${query}) || '%'
               OR LOWER(d.title) LIKE '%' || LOWER(${query}) || '%'
-              OR EXISTS (
-                SELECT 1 FROM unnest(string_to_array(LOWER(${query}), ' ')) AS keyword
-                WHERE LOWER(d.content) LIKE '%' || keyword || '%'
-                  AND length(keyword) > 2
-              )
             )
           ORDER BY similarity DESC, d."createdAt" DESC
           LIMIT ${limit}
         `;
         
-        return fallbackResults;
+        return (fallbackResults as any[]).filter(doc => doc.similarity >= 0.8);
       }
 
       return results;
     } catch (error) {
-      console.error('Error in searchSimilarDocuments:', error);
       try {
         const fallbackResults = await prisma.$queryRaw`
           SELECT 
@@ -223,7 +221,6 @@ export class EmbeddingService {
         `;
         return fallbackResults;
       } catch (fallbackError) {
-        console.error('Fallback search also failed:', fallbackError);
         return [];
       }
     }
@@ -235,7 +232,7 @@ export class EmbeddingService {
     relevantDocuments: any[];
   }> {
     try {
-      const relevantDocs = await this.searchSimilarDocuments(userId, query, 5, 0.3);
+      const relevantDocs = await this.searchSimilarDocuments(userId, query, 10, 0.4);
       
       if (!relevantDocs || relevantDocs.length === 0) {
         return {
@@ -245,13 +242,37 @@ export class EmbeddingService {
         };
       }
 
-      const context = (relevantDocs as any[]).map((doc, index) => {
+      const highQualityDocs = (relevantDocs as any[]).filter(doc => doc.similarity >= 0.50);
+      
+      if (highQualityDocs.length === 0) {
+        return {
+          response: `Based on the ${relevantDocs.length} document${relevantDocs.length === 1 ? '' : 's'} found in your data, I can help answer your question.`,
+          sources: (relevantDocs as any[]).map((doc) => ({
+            id: doc.id,
+            sourceType: doc.sourceType,
+            title: doc.title,
+            similarity: doc.similarity,
+            metadata: doc.metadata || {},
+            preview: doc.content.substring(0, 200) + '...'
+          })),
+          relevantDocuments: relevantDocs
+        };
+      }
+      
+      const contextDocs = highQualityDocs.length > 0 ? highQualityDocs : (relevantDocs as any[]);
+      
+      const context = contextDocs.map((doc, index) => {
         const metadata = doc.metadata || {};
         let sourceInfo = '';
         
         switch (doc.sourceType) {
           case 'email':
-            sourceInfo = `Email from ${metadata.from || 'unknown'} on ${metadata.date ? new Date(metadata.date).toLocaleDateString() : 'unknown date'}`;
+            const fromSender = metadata.from || 'unknown';
+            const emailDate = metadata.date ? new Date(metadata.date).toLocaleDateString() : 'unknown date';
+            sourceInfo = `Email from ${fromSender} on ${emailDate}`;
+            if (doc.title) {
+              sourceInfo += ` with subject: "${doc.title}"`;
+            }
             break;
           case 'hubspot_contact':
             sourceInfo = `HubSpot Contact: ${doc.title || 'Unnamed contact'}`;
@@ -267,6 +288,7 @@ export class EmbeddingService {
         return `[Source ${index + 1}] ${sourceInfo}:\n${doc.content}\n`;
       }).join('\n');
 
+
       const prompt = `You are an AI assistant that helps users find information from their personal data including emails, contacts, calendar events, and notes. Use the provided context to answer the user's question accurately and helpfully.
 
 Context from user's data:
@@ -275,10 +297,11 @@ ${context}
 User's question: ${query}
 
 Instructions:
-- Answer based only on the information provided in the context
-- If the context doesn't contain relevant information, say so clearly
-- Cite specific sources when mentioning information (e.g., "According to your email from John...")
-- Be conversational and helpful
+- Answer based ONLY on the information provided in the context above
+- Count the number of sources when asked about quantities (e.g., "how many emails")
+- If asked about emails from a specific sender, count how many are listed in the context
+- Be specific about numbers and dates when available
+- Cite sources when mentioning information (e.g., "According to your email from Jump...")
 - If you find relevant information, provide specific details and context
 
 Answer:`;
@@ -286,17 +309,36 @@ Answer:`;
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
       
-      const sources = (relevantDocs as any[]).map((doc, index) => {
-        const metadata = doc.metadata || {};
-        return {
-          id: doc.id,
-          sourceType: doc.sourceType,
-          title: doc.title,
-          similarity: doc.similarity,
-          metadata,
-          preview: doc.content.substring(0, 200) + '...'
-        };
-      });
+      const sources = await Promise.all(
+        contextDocs
+          .filter(doc => doc.similarity >= 0.7)
+          .map(async (doc) => {
+            const metadata = doc.metadata || {};
+            let gmailId = null;
+            
+            if (doc.sourceType === 'email') {
+              try {
+                const emailRecord = await prisma.email.findUnique({
+                  where: { id: doc.sourceId },
+                  select: { gmailId: true }
+                });
+                gmailId = emailRecord?.gmailId;
+              } catch (error) {
+              }
+            }
+            
+            return {
+              id: doc.id,
+              sourceType: doc.sourceType,
+              title: doc.title,
+              similarity: doc.similarity,
+              metadata,
+              preview: doc.content.substring(0, 200) + '...',
+              sourceId: doc.sourceId,
+              gmailId
+            };
+          })
+      );
 
       return {
         response: response.text(),
