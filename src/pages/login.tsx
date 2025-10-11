@@ -5,7 +5,7 @@ import { GetServerSideProps } from 'next'
 
 const LoginPage = () => {
   const handleGoogleSignIn = () => {
-    signIn('google', { callbackUrl: '/dashboard' })
+    signIn('google', { callbackUrl: '/' })
   }
 
   return (
@@ -94,7 +94,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   if (session) {
     return {
       redirect: {
-        destination: '/dashboard',
+        destination: '/',
         permanent: false
       }
     }

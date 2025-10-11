@@ -73,11 +73,11 @@ interface Chat {
   messages?: Message[]
 }
 
-const Dashboard = () => {
-  const { user, isLoading: isAuthLoading, isAuthenticated } = useAuth()
+const ChatPage = () => {
+  const { user, isLoading: isAuthLoading } = useAuth()
   const router = useRouter()
+  const { id } = router.query
   const hubspot = useHubSpot()
-  const [selectedChatId, setSelectedChatId] = useState<string | null>('new')
   const [currentChat, setCurrentChat] = useState<Chat | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [chats, setChats] = useState<Chat[]>([])
@@ -85,31 +85,24 @@ const Dashboard = () => {
   const [isCreatingChat, setIsCreatingChat] = useState(false)
 
   useEffect(() => {
-    if (isAuthenticated && !isAuthLoading) {
+    if (user) {
       loadChats()
     }
-  }, [isAuthenticated, isAuthLoading])
-
+  }, [user])
 
   useEffect(() => {
-    if (isCreatingChat) {
-      // Don't reset messages when we're creating a new chat
-      return
-    }
-    
-    if (selectedChatId && selectedChatId !== 'new') {
-      loadChatMessages(selectedChatId)
-    } else if (selectedChatId === 'new') {
+    if (id && id !== 'new') {
+      loadChatMessages(id as string)
+    } else {
       setMessages([])
       setCurrentChat(null)
     }
-  }, [selectedChatId, isCreatingChat])
-
+  }, [id])
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
     if (urlParams.get('hubspot') === 'connected') {
-      router.replace('/dashboard', undefined, { shallow: true })
+      router.replace(router.pathname, undefined, { shallow: true })
       hubspot.refetch()
     }
   }, [router, hubspot])
@@ -149,17 +142,14 @@ const Dashboard = () => {
   }
 
   const handleNewChat = () => {
-    setSelectedChatId('new')
-    setCurrentChat(null)
-    setMessages([])
+    router.push('/')
   }
 
   const sendMessage = async (content: string) => {
     if (!content.trim()) return
 
-    let chatId = selectedChatId
+    let chatId = id as string
     
-
     if (!chatId || chatId === 'new') {
       setIsCreatingChat(true)
       try {
@@ -172,9 +162,8 @@ const Dashboard = () => {
         if (response.ok) {
           chatId = newChat.id
           setCurrentChat(newChat)
-          setSelectedChatId(newChat.id)
-          // Add the new chat to the list immediately
           setChats(prevChats => [newChat, ...prevChats])
+          router.push(`/${newChat.id}`, undefined, { shallow: true })
         } else {
           console.error('Failed to create chat')
           setIsCreatingChat(false)
@@ -187,7 +176,6 @@ const Dashboard = () => {
       }
     }
 
-
     const userMessage: Message = {
       id: Date.now().toString(),
       content,
@@ -195,7 +183,6 @@ const Dashboard = () => {
       createdAt: new Date()
     }
     
-
     const loadingMessage: Message = {
       id: (Date.now() + 1).toString(),
       content: 'Thinking...',
@@ -234,7 +221,6 @@ const Dashboard = () => {
         msg.id === loadingMessage.id ? aiMessage : msg
       ))
 
-
       if (isCreatingChat) {
         setIsCreatingChat(false)
       }
@@ -242,7 +228,6 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Error sending message:', error)
       
-
       const errorMessage: Message = {
         id: loadingMessage.id,
         content: 'Sorry, I encountered an error processing your message. Please try again.',
@@ -259,6 +244,7 @@ const Dashboard = () => {
       }
     }
   }
+
   if (isAuthLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -266,6 +252,7 @@ const Dashboard = () => {
       </div>
     )
   }
+
   if (!user) {
     return null
   }
@@ -289,7 +276,7 @@ const Dashboard = () => {
                   {hubspot.connected ? (
                     <div className="bg-green-50 border border-green-200 rounded-lg p-2 mx-1">
                       <div className="flex items-center gap-2">
-                 
+                
                         <img 
                           src="/assets/hubspot_logo.png" 
                           alt="HubSpot" 
@@ -347,8 +334,8 @@ const Dashboard = () => {
                   chats.map((chat) => (
                     <SidebarMenuItem key={chat.id}>
                       <SidebarMenuButton
-                        onClick={() => setSelectedChatId(chat.id)}
-                        isActive={selectedChatId === chat.id}
+                        onClick={() => router.push(`/${chat.id}`)}
+                        isActive={id === chat.id}
                         tooltip={chat.title || 'Untitled Chat'}
                         className="px-2"
                       >
@@ -419,122 +406,119 @@ const Dashboard = () => {
         </header>
 
         <div className="flex flex-1 flex-col gap-4 p-0">
-          {selectedChatId ? (
-            messages.length === 0 ? (
-              <div className="flex flex-col h-full">
-                <div className="flex-1 flex flex-col items-center justify-center px-4 pb-[20vh]">
-                  <h1 className="text-3xl font-semibold mb-8 text-gray-700 dark:text-gray-300">Where should we begin?</h1>
-                  <div className="w-full max-w-3xl">
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="Ask anything"
-                        className="flex h-14 w-full rounded-full border border-input bg-background px-6 py-3 text-sm shadow-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 pr-12"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                            const content = e.currentTarget.value
-                            e.currentTarget.value = ''
-                            sendMessage(content)
-                          }
-                        }}
-                      />
-                      <button className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                        <Send className="h-4 w-4" />
-                      </button>
-                    </div>
+          {messages.length === 0 ? (
+            <div className="flex flex-col h-full">
+              <div className="flex-1 flex flex-col items-center justify-center px-4 pb-[20vh]">
+                <h1 className="text-3xl font-semibold mb-8 text-gray-700 dark:text-gray-300">Where should we begin?</h1>
+                <div className="w-full max-w-3xl">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Ask anything"
+                      className="flex h-14 w-full rounded-full border border-input bg-background px-6 py-3 text-sm shadow-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 pr-12"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                          const content = e.currentTarget.value
+                          e.currentTarget.value = ''
+                          sendMessage(content)
+                        }
+                      }}
+                    />
+                    <button className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                      <Send className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               </div>
-            ) : (
-              <div className="flex flex-col h-full">
-                <div className="flex-1 overflow-y-auto px-4 py-6">
-                  <div className="mx-auto max-w-3xl space-y-6">
-                    {messages.map((message) => (
-                      <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`flex flex-col space-y-2 ${message.role === 'user' ? 'items-end' : 'items-start max-w-[80%]'}`}>
-                          <div className={`rounded-2xl px-4 py-2 ${
-                            message.role === 'user' 
-                              ? 'bg-[#f0f5f5] text-gray-900' 
-                              : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-                          }`}>
-                            {message.isLoading ? (
-                              <div className="flex items-center gap-2">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                <p className="text-base">{message.content}</p>
-                              </div>
-                            ) : (
-                              <p className="text-base whitespace-pre-wrap">{message.content}</p>
-                            )}
-                          </div>
-                          {message.sources && message.sources.length > 0 && (
-                            <div className="text-xs space-y-1">
-                              <p className="text-gray-500 font-medium">Sources:</p>
-                              {message.sources.map((source, index) => (
-                                <div key={index} className="flex items-center gap-1 text-gray-600 bg-gray-50 rounded px-2 py-1">
-                                  <ExternalLink className="h-3 w-3" />
-                                  <span className="capitalize">{source.sourceType.replace('_', ' ')}</span>
-                                  {source.title && <span>: {source.title}</span>}
-                                  <span className="ml-auto text-gray-400">
-                                    {Math.round((source.similarity || 0) * 100)}% match
-                                  </span>
-                                </div>
-                              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col h-full">
+              <div className="flex-1 overflow-y-auto px-4 py-6">
+                <div className="mx-auto max-w-3xl space-y-6">
+                  {messages.map((message) => (
+                    <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`flex flex-col space-y-2 ${message.role === 'user' ? 'items-end' : 'items-start max-w-[80%]'}`}>
+                        <div className={`rounded-2xl px-4 py-2 ${
+                          message.role === 'user' 
+                            ? 'bg-[#f0f5f5] text-gray-900' 
+                            : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+                        }`}>
+                          {message.isLoading ? (
+                            <div className="flex items-center gap-2">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <p className="text-base">{message.content}</p>
                             </div>
-                          )}
-                          {message.role === 'assistant' && (
-                            <div className="flex items-center gap-1 px-2">
-                              <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
-                                <Paperclip className="h-3.5 w-3.5 text-gray-500" />
-                              </button>
-                              <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
-                                <ThumbsUp className="h-3.5 w-3.5 text-gray-500" />
-                              </button>
-                              <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
-                                <ThumbsDown className="h-3.5 w-3.5 text-gray-500" />
-                              </button>
-                              <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
-                                <Share className="h-3.5 w-3.5 text-gray-500" />
-                              </button>
-                              <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
-                                <MoreHorizontal className="h-3.5 w-3.5 text-gray-500" />
-                              </button>
-                            </div>
+                          ) : (
+                            <p className="text-base whitespace-pre-wrap">{message.content}</p>
                           )}
                         </div>
-                  
+                        {message.sources && message.sources.length > 0 && (
+                          <div className="text-xs space-y-1">
+                            <p className="text-gray-500 font-medium">Sources:</p>
+                            {message.sources.map((source, index) => (
+                              <div key={index} className="flex items-center gap-1 text-gray-600 bg-gray-50 rounded px-2 py-1">
+                                <ExternalLink className="h-3 w-3" />
+                                <span className="capitalize">{source.sourceType.replace('_', ' ')}</span>
+                                {source.title && <span>: {source.title}</span>}
+                                <span className="ml-auto text-gray-400">
+                                  {Math.round((source.similarity || 0) * 100)}% match
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {message.role === 'assistant' && (
+                          <div className="flex items-center gap-1 px-2">
+                            <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+                              <Paperclip className="h-3.5 w-3.5 text-gray-500" />
+                            </button>
+                            <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+                              <ThumbsUp className="h-3.5 w-3.5 text-gray-500" />
+                            </button>
+                            <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+                              <ThumbsDown className="h-3.5 w-3.5 text-gray-500" />
+                            </button>
+                            <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+                              <Share className="h-3.5 w-3.5 text-gray-500" />
+                            </button>
+                            <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+                              <MoreHorizontal className="h-3.5 w-3.5 text-gray-500" />
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="border-t bg-background p-6">
-                  <div className="mx-auto max-w-3xl">
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="Send a message..."
-                        className="flex h-14 w-full rounded-full border border-input bg-background px-6 py-3 text-sm shadow-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 pr-12"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                            const content = e.currentTarget.value
-                            e.currentTarget.value = ''
-                            sendMessage(content)
-                          }
-                        }}
-                      />
-                      <button className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                        <Send className="h-4 w-4" />
-                      </button>
                     </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t bg-background p-6">
+                <div className="mx-auto max-w-3xl">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Send a message..."
+                      className="flex h-14 w-full rounded-full border border-input bg-background px-6 py-3 text-sm shadow-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 pr-12"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                          const content = e.currentTarget.value
+                          e.currentTarget.value = ''
+                          sendMessage(content)
+                        }
+                      }}
+                    />
+                    <button className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                      <Send className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               </div>
-            )
-          ) : null}
+            </div>
+          )}
         </div>
       </SidebarInset>
     </SidebarProvider>
   )
 }
 
-export default Dashboard
+export default ChatPage

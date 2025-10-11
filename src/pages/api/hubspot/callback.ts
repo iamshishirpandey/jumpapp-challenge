@@ -12,7 +12,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { code, state } = req.query
 
   if (!code || !state) {
-    return res.redirect('/dashboard?error=missing_code_or_state')
+    return res.redirect('/?error=missing_code_or_state')
   }
 
   try {
@@ -85,9 +85,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Don't fail the connection if sync fails - user can retry later
     }
 
-    res.redirect('/dashboard?hubspot=connected')
+    res.redirect('/?hubspot=connected')
   } catch (error) {
     console.error('HubSpot OAuth error:', error)
-    res.redirect('/dashboard?error=hubspot_connection_failed')
+    res.redirect('/?error=hubspot_connection_failed')
   }
 }

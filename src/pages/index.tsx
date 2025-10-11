@@ -1,7 +1,7 @@
-import LoginPage from './login'
+import ChatPage from './[id]'
 
-const index = () => {
-  return <LoginPage />
+const HomePage = () => {
+  return <ChatPage />
 }
 
-export default index
+export default HomePage

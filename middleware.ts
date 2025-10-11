@@ -9,7 +9,7 @@ export default withAuth(
     callbacks: {
       authorized: ({ token, req }) => {
         const pathname = req.nextUrl.pathname
-        const publicRoutes = ['/', '/login', '/auth/signin', '/auth/error']
+        const publicRoutes = ['/login', '/auth/signin', '/auth/error']
         if (publicRoutes.includes(pathname)) {
           return true
         }
