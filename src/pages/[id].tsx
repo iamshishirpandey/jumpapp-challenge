@@ -83,6 +83,7 @@ const ChatPage = () => {
   const [chats, setChats] = useState<Chat[]>([])
   const [isLoadingChats, setIsLoadingChats] = useState(true)
   const [isCreatingChat, setIsCreatingChat] = useState(false)
+  const [skipLoadMessages, setSkipLoadMessages] = useState(false)
 
   useEffect(() => {
     if (user) {
@@ -91,9 +92,14 @@ const ChatPage = () => {
   }, [user])
 
   useEffect(() => {
-    if (id && id !== 'new') {
+    if (skipLoadMessages) {
+      setSkipLoadMessages(false)
+      return
+    }
+    
+    if (id && id !== 'new' && !isCreatingChat) {
       loadChatMessages(id as string)
-    } else {
+    } else if (!id && !isCreatingChat) {
       setMessages([])
       setCurrentChat(null)
     }
@@ -163,7 +169,9 @@ const ChatPage = () => {
           chatId = newChat.id
           setCurrentChat(newChat)
           setChats(prevChats => [newChat, ...prevChats])
-          router.push(`/${newChat.id}`, undefined, { shallow: true })
+          setSkipLoadMessages(true)
+          
+          window.history.pushState(null, '', `/${newChat.id}`)
         } else {
           console.error('Failed to create chat')
           setIsCreatingChat(false)
