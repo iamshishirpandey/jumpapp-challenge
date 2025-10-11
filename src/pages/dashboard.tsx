@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { signOut, useSession } from 'next-auth/react'
 import { useRouter } from 'next/router'
-import { MessageCircle, Plus, User, Send, SquarePen, LogOut, ChevronUp, Check, X } from 'lucide-react'
+import { User, Send, SquarePen, LogOut, ChevronUp, X, Paperclip, ThumbsUp, ThumbsDown, Share, MoreHorizontal } from 'lucide-react'
 import { useHubSpot } from '@/hooks/useHubSpot'
 import {
   Sidebar,
@@ -20,7 +20,6 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,11 +54,19 @@ const SidebarHeaderContent = () => {
   )
 }
 
+interface Message {
+  id: string
+  content: string
+  sender: 'user' | 'ai'
+  timestamp: Date
+}
+
 const Dashboard = () => {
   const { data: sessionData, status } = useSession()
   const router = useRouter()
   const hubspot = useHubSpot()
-  const [selectedChat, setSelectedChat] = useState<string | null>(null)
+  const [selectedChat, setSelectedChat] = useState<string | null>('new')
+  const [messages, setMessages] = useState<Message[]>([])
   const [chats, setChats] = useState([
     { id: '1', title: 'Sample History 1' },
     { id: '2', title: 'Sample History 2' },
@@ -248,51 +255,128 @@ const Dashboard = () => {
           </div>
         </header>
 
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+        <div className="flex flex-1 flex-col gap-4 p-0">
           {selectedChat ? (
-            <div className="min-h-[100vh] flex-1 rounded-xl  md:min-h-min p-8">
-              <div className="mx-auto max-w-3xl">
-                <div className="text-center mb-8">
-                  <h2 className="text-xl font-semibold tracking-tight mb-2">Chat Interface</h2>
-                  <p className="text-sm text-muted-foreground">Start a conversation with AI</p>
-                </div>
-                
-                <div className="bg-background border rounded-lg p-4 mb-4">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-600">
-                      <span className="text-xs font-medium text-white">AI</span>
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm">Hello! How can I help you today?</p>
+            messages.length === 0 ? (
+              <div className="flex flex-col h-full">
+                <div className="flex-1 flex flex-col items-center justify-center px-4 pb-[20vh]">
+                  <h1 className="text-3xl font-semibold mb-8 text-gray-700 dark:text-gray-300">Where should we begin?</h1>
+                  <div className="w-full max-w-3xl">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Ask anything"
+                        className="flex h-14 w-full rounded-full border border-input bg-background px-6 py-3 text-sm shadow-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 pr-12"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                            const newMessage: Message = {
+                              id: Date.now().toString(),
+                              content: e.currentTarget.value,
+                              sender: 'user',
+                              timestamp: new Date()
+                            }
+                            setMessages([newMessage])
+                            e.currentTarget.value = ''
+                          }
+                        }}
+                      />
+                      <button className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                        <Send className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
                 </div>
+              </div>
+            ) : (
+              <div className="flex flex-col h-full">
+                <div className="flex-1 overflow-y-auto px-4 py-6">
+                  <div className="mx-auto max-w-3xl space-y-6">
+                    {messages.map((message) => (
+                      <div key={message.id} className={`flex gap-3 ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        {message.sender === 'ai' && (
+                          <div className="flex-shrink-0">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-green-500 to-teal-600">
+                              <span className="text-xs font-bold text-white">AI</span>
+                            </div>
+                          </div>
+                        )}
+                        <div className={`flex flex-col space-y-2 ${message.sender === 'user' ? 'items-end' : 'items-start max-w-[80%]'}`}>
+                          <div className={`rounded-2xl px-4 py-2 ${
+                            message.sender === 'user' 
+                              ? 'bg-[#f0f5f5] text-gray-900' 
+                              : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+                          }`}>
+                            <p className="text-base whitespace-pre-wrap">{message.content}</p>
+                          </div>
+                          {message.sender === 'ai' && (
+                            <div className="flex items-center gap-1 px-2">
+                              <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+                                <Paperclip className="h-3.5 w-3.5 text-gray-500" />
+                              </button>
+                              <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+                                <ThumbsUp className="h-3.5 w-3.5 text-gray-500" />
+                              </button>
+                              <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+                                <ThumbsDown className="h-3.5 w-3.5 text-gray-500" />
+                              </button>
+                              <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+                                <Share className="h-3.5 w-3.5 text-gray-500" />
+                              </button>
+                              <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+                                <MoreHorizontal className="h-3.5 w-3.5 text-gray-500" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {message.sender === 'user' && (
+                          <div className="flex-shrink-0">
+                            {sessionData?.session?.user?.image ? (
+                              <img 
+                                src={sessionData.session.user.image} 
+                                alt={sessionData.session.user.name || ''} 
+                                className="h-8 w-8 rounded-full"
+                              />
+                            ) : (
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-600">
+                                <User className="h-4 w-4 text-white" />
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Send a message..."
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pr-10"
-                  />
-                  <button className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                    <Send className="h-4 w-4" />
-                  </button>
+                <div className="border-t bg-background p-6">
+                  <div className="mx-auto max-w-3xl">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Send a message..."
+                        className="flex h-14 w-full rounded-full border border-input bg-background px-6 py-3 text-sm shadow-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 pr-12"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                            const newMessage: Message = {
+                              id: Date.now().toString(),
+                              content: e.currentTarget.value,
+                              sender: 'user',
+                              timestamp: new Date()
+                            }
+                            setMessages([...messages, newMessage])
+                            e.currentTarget.value = ''
+                          }
+                        }}
+                      />
+                      <button className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                        <Send className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="min-h-[100vh] flex-1 rounded-xl md:min-h-min flex items-center justify-center">
-              <div className="text-center">
-                <MessageCircle className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-                <h2 className="text-xl font-semibold tracking-tight mb-2">Welcome to Jump</h2>
-                <p className="text-sm text-muted-foreground mb-6">Select a chat from the sidebar or start a new conversation</p>
-                <Button onClick={handleNewChat} className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Start new chat
-                </Button>
-              </div>
-            </div>
-          )}
+            )
+          ) : null}
         </div>
       </SidebarInset>
     </SidebarProvider>
