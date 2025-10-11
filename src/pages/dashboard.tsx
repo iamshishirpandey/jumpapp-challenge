@@ -58,32 +58,52 @@ const SidebarHeaderContent = () => {
 interface Message {
   id: string
   content: string
-  sender: 'user' | 'ai'
-  timestamp: Date
+  role: 'user' | 'assistant'
+  createdAt: Date
   sources?: any[]
   isLoading?: boolean
+}
+
+interface Chat {
+  id: string
+  title: string
+  createdAt?: string
+  updatedAt?: string
+  messages?: Message[]
 }
 
 const Dashboard = () => {
   const { data: sessionData, status } = useSession()
   const router = useRouter()
   const hubspot = useHubSpot()
-  const [selectedChat, setSelectedChat] = useState<string | null>('new')
+  const [selectedChatId, setSelectedChatId] = useState<string | null>('new')
+  const [currentChat, setCurrentChat] = useState<Chat | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
-  const [chats, setChats] = useState([
-    { id: '1', title: 'Sample History 1' },
-    { id: '2', title: 'Sample History 2' },
-    { id: '3', title: 'Sample History 3' },
-    { id: '4', title: 'Sample History 4' },
-    { id: '5', title: 'Sample History 5' },
-    { id: '6', title: 'Sample History 6' },
-  ])
+  const [chats, setChats] = useState<Chat[]>([])
+  const [isLoadingChats, setIsLoadingChats] = useState(true)
   
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/login')
     }
   }, [status, router])
+
+
+  useEffect(() => {
+    if (status === 'authenticated') {
+      loadChats()
+    }
+  }, [status])
+
+
+  useEffect(() => {
+    if (selectedChatId && selectedChatId !== 'new') {
+      loadChatMessages(selectedChatId)
+    } else if (selectedChatId === 'new') {
+      setMessages([])
+      setCurrentChat(null)
+    }
+  }, [selectedChatId])
 
 
   useEffect(() => {
@@ -94,47 +114,101 @@ const Dashboard = () => {
     }
   }, [router, hubspot])
 
+  const loadChats = async () => {
+    try {
+      setIsLoadingChats(true)
+      const response = await fetch('/api/chats')
+      const data = await response.json()
+      
+      if (response.ok) {
+        setChats(data)
+      }
+    } catch (error) {
+      console.error('Error loading chats:', error)
+    } finally {
+      setIsLoadingChats(false)
+    }
+  }
+
+  const loadChatMessages = async (chatId: string) => {
+    try {
+      const response = await fetch(`/api/chats/${chatId}`)
+      const data = await response.json()
+      
+      if (response.ok) {
+        setCurrentChat(data)
+        setMessages(data.messages || [])
+      }
+    } catch (error) {
+      console.error('Error loading chat messages:', error)
+    }
+  }
+
   const handleSignOut = () => {
     signOut({ callbackUrl: '/login' })
   }
 
   const handleNewChat = () => {
-    const newChat = {
-      id: Date.now().toString(),
-      title: 'New conversation'
-    }
-    setChats([newChat, ...chats])
-    setSelectedChat(newChat.id)
+    setSelectedChatId('new')
+    setCurrentChat(null)
     setMessages([])
   }
 
   const sendMessage = async (content: string) => {
     if (!content.trim()) return
 
-    // Add user message
+
+    let chatId = selectedChatId
+    if (!chatId || chatId === 'new') {
+      try {
+        const response = await fetch('/api/chats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: content.slice(0, 50) })
+        })
+        const newChat = await response.json()
+        if (response.ok) {
+          setChats([newChat, ...chats])
+          setSelectedChatId(newChat.id)
+          setCurrentChat(newChat)
+          chatId = newChat.id
+        } else {
+          console.error('Failed to create chat')
+          return
+        }
+      } catch (error) {
+        console.error('Error creating chat:', error)
+        return
+      }
+    }
+
+
     const userMessage: Message = {
       id: Date.now().toString(),
       content,
-      sender: 'user',
-      timestamp: new Date()
+      role: 'user',
+      createdAt: new Date()
     }
     
-    // Add loading AI message
+
     const loadingMessage: Message = {
       id: (Date.now() + 1).toString(),
       content: 'Thinking...',
-      sender: 'ai',
-      timestamp: new Date(),
+      role: 'assistant',
+      createdAt: new Date(),
       isLoading: true
     }
 
     setMessages(prev => [...prev, userMessage, loadingMessage])
 
     try {
-      const response = await fetch('/api/chat', {
+      const response = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content }),
+        body: JSON.stringify({ 
+          query: content,
+          chatId: chatId 
+        }),
       })
 
       const data = await response.json()
@@ -143,28 +217,30 @@ const Dashboard = () => {
         throw new Error(data.error || 'Failed to get response')
       }
 
-      // Update loading message with actual response
       const aiMessage: Message = {
         id: loadingMessage.id,
-        content: data.response,
-        sender: 'ai',
-        timestamp: new Date(),
-        sources: data.sources || []
+        content: data.response || `Found ${data.resultsCount || 0} relevant results for your query.`,
+        role: 'assistant',
+        createdAt: new Date(),
+        sources: data.results || []
       }
 
       setMessages(prev => prev.map(msg => 
         msg.id === loadingMessage.id ? aiMessage : msg
       ))
 
+
+      loadChats()
+
     } catch (error) {
       console.error('Error sending message:', error)
       
-      // Update loading message with error
+
       const errorMessage: Message = {
         id: loadingMessage.id,
         content: 'Sorry, I encountered an error processing your message. Please try again.',
-        sender: 'ai',
-        timestamp: new Date()
+        role: 'assistant',
+        createdAt: new Date()
       }
 
       setMessages(prev => prev.map(msg => 
@@ -257,18 +333,28 @@ const Dashboard = () => {
             <SidebarGroupLabel className="px-2">History</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {chats.map((chat) => (
-                  <SidebarMenuItem key={chat.id}>
-                    <SidebarMenuButton
-                      onClick={() => setSelectedChat(chat.id)}
-                      isActive={selectedChat === chat.id}
-                      tooltip={chat.title}
-                      className="px-2"
-                    >
-                      <span>{chat.title}</span>
-                    </SidebarMenuButton>
+                {isLoadingChats ? (
+                  <SidebarMenuItem>
+                    <div className="px-3 py-2 text-sm text-muted-foreground">Loading chats...</div>
                   </SidebarMenuItem>
-                ))}
+                ) : chats.length === 0 ? (
+                  <SidebarMenuItem>
+                    <div className="px-3 py-2 text-sm text-muted-foreground">No chat history yet</div>
+                  </SidebarMenuItem>
+                ) : (
+                  chats.map((chat) => (
+                    <SidebarMenuItem key={chat.id}>
+                      <SidebarMenuButton
+                        onClick={() => setSelectedChatId(chat.id)}
+                        isActive={selectedChatId === chat.id}
+                        tooltip={chat.title || 'Untitled Chat'}
+                        className="px-2"
+                      >
+                        <span>{chat.title || 'Untitled Chat'}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -331,7 +417,7 @@ const Dashboard = () => {
         </header>
 
         <div className="flex flex-1 flex-col gap-4 p-0">
-          {selectedChat ? (
+          {selectedChatId ? (
             messages.length === 0 ? (
               <div className="flex flex-col h-full">
                 <div className="flex-1 flex flex-col items-center justify-center px-4 pb-[20vh]">
@@ -362,17 +448,17 @@ const Dashboard = () => {
                 <div className="flex-1 overflow-y-auto px-4 py-6">
                   <div className="mx-auto max-w-3xl space-y-6">
                     {messages.map((message) => (
-                      <div key={message.id} className={`flex gap-3 ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        {message.sender === 'ai' && (
+                      <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        {message.role === 'assistant' && (
                           <div className="flex-shrink-0">
                             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-green-500 to-teal-600">
                               <span className="text-xs font-bold text-white">AI</span>
                             </div>
                           </div>
                         )}
-                        <div className={`flex flex-col space-y-2 ${message.sender === 'user' ? 'items-end' : 'items-start max-w-[80%]'}`}>
+                        <div className={`flex flex-col space-y-2 ${message.role === 'user' ? 'items-end' : 'items-start max-w-[80%]'}`}>
                           <div className={`rounded-2xl px-4 py-2 ${
-                            message.sender === 'user' 
+                            message.role === 'user' 
                               ? 'bg-[#f0f5f5] text-gray-900' 
                               : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
                           }`}>
@@ -400,7 +486,7 @@ const Dashboard = () => {
                               ))}
                             </div>
                           )}
-                          {message.sender === 'ai' && (
+                          {message.role === 'assistant' && (
                             <div className="flex items-center gap-1 px-2">
                               <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
                                 <Paperclip className="h-3.5 w-3.5 text-gray-500" />
@@ -420,7 +506,7 @@ const Dashboard = () => {
                             </div>
                           )}
                         </div>
-                        {message.sender === 'user' && (
+                        {message.role === 'user' && (
                           <div className="flex-shrink-0">
                             {sessionData?.session?.user?.image ? (
                               <img 

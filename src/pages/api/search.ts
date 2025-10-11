@@ -25,10 +25,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const { query, limit = 10, threshold = 0.7 } = req.body;
+    const { query, limit = 10, threshold = 0.7, chatId } = req.body;
 
     if (!query) {
       return res.status(400).json({ error: 'Query is required' });
+    }
+
+
+    if (chatId) {
+      try {
+        await prisma.message.create({
+          data: {
+            chatId,
+            role: 'user',
+            content: query,
+          },
+        });
+
+
+        await prisma.chat.update({
+          where: { id: chatId },
+          data: { updatedAt: new Date() },
+        });
+      } catch (error) {
+        console.error('Error saving user message:', error);
+      }
     }
 
     const embeddingService = new EmbeddingService();
@@ -39,7 +60,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       threshold
     );
 
-    // Enrich results with source data
+
     const enrichedResults = await Promise.all(
       (results as any[]).map(async (doc: any) => {
         let sourceData = null;
@@ -107,11 +128,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })
     );
 
+    const aiResponse = enrichedResults.length > 0
+      ? `Found ${enrichedResults.length} relevant results for your query.`
+      : 'No relevant results found for your query.';
+
+    if (chatId) {
+      try {
+        await prisma.message.create({
+          data: {
+            chatId,
+            role: 'assistant',
+            content: aiResponse,
+          },
+        });
+      } catch (error) {
+        console.error('Error saving assistant message:', error);
+      }
+    }
+
     return res.status(200).json({
       success: true,
       results: enrichedResults,
       query,
       resultsCount: enrichedResults.length,
+      response: aiResponse,
+      chatId,
     });
   } catch (error) {
     console.error('Search error:', error);
