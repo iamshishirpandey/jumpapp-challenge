@@ -185,7 +185,7 @@ model CalendarEvent {
 model Document {
   id            String                  @id @default(cuid())
   userId        String
-  sourceType    String                  // 'email', 'hubspot_contact', 'hubspot_note', 'calendar_event'
+  sourceType    String                  
   sourceId      String                  
   title         String?
   content       String                  @db.Text
@@ -196,6 +196,7 @@ model Document {
   
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   
+  @@unique([userId, sourceId])
   @@index([userId])
   @@index([sourceType, sourceId])
 }
