@@ -2,6 +2,9 @@ import NextAuth from 'next-auth'
 import GoogleProvider from 'next-auth/providers/google'
 import { NextAuthOptions } from 'next-auth'
 import { prisma } from '@/lib/prisma'
+import { GmailService } from '@/lib/services/gmail'
+import { CalendarService } from '@/lib/services/calendar'
+import { EmbeddingService } from '@/lib/services/embeddings'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -10,27 +13,14 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: [
-            'openid',
-            'email', 
-            'profile',
-            'https://www.googleapis.com/auth/calendar',
-            'https://www.googleapis.com/auth/gmail.readonly',
-            'https://www.googleapis.com/auth/gmail.compose',
-            'https://www.googleapis.com/auth/gmail.modify'
-          ].join(' '),
+          scope: 'openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.modify',
           access_type: 'offline',
-          prompt: 'consent'
+          prompt: 'consent',
         }
       },
-      profile(profile) {
-        return {
-          id: profile.sub,
-          name: profile.name,
-          email: profile.email,
-          image: profile.picture
-        }
-      }
+      httpOptions: {
+        timeout: 10000, // 10 seconds timeout instead of default 3.5 seconds
+      },
     })
   ],
   callbacks: {
@@ -58,32 +48,103 @@ export const authOptions: NextAuthOptions = {
       return session
     },
     async signIn({ user, account, profile }) {
-      // Ensure user exists in database for HubSpot integration
-      if (user.email) {
-        await prisma.user.upsert({
-          where: { email: user.email },
-          update: {
-            name: user.name,
-            image: user.image,
-          },
-          create: {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            image: user.image,
-          },
-        })
+      try {
+        // Ensure user exists in database and save refresh tokens
+        if (user.email) {
+          const updateData: any = {
+            name: user.name || null,
+            image: user.image || null,
+          };
+          
+          // Save Google refresh token if available
+          if (account?.provider === 'google' && account.refresh_token) {
+            updateData.googleRefreshToken = account.refresh_token;
+            updateData.googleConnected = true;
+            updateData.googleConnectedAt = new Date();
+          }
+          
+          const updatedUser = await prisma.user.upsert({
+            where: { email: user.email },
+            update: updateData,
+            create: {
+              email: user.email,
+              name: user.name || null,
+              image: user.image || null,
+              googleRefreshToken: account?.refresh_token || null,
+              googleConnected: account?.provider === 'google',
+              googleConnectedAt: account?.provider === 'google' ? new Date() : null,
+            },
+          })
+          
+          // Automatically sync Gmail and Calendar data after Google connection
+          if (account?.provider === 'google' && account.refresh_token) {
+            try {
+              console.log('Starting automatic Google data sync for user:', user.email)
+              
+              const embeddingService = new EmbeddingService()
+              
+              // Sync Gmail
+              try {
+                const gmailService = new GmailService(account.refresh_token)
+                const emails = await gmailService.fetchEmails(updatedUser.id, 'newer_than:7d', 50)
+                console.log(`Fetched ${emails.length} emails`)
+                
+                const emailEmbeddings = await Promise.allSettled(
+                  emails.map(email => embeddingService.processEmailForRAG(updatedUser.id, email))
+                )
+                
+                const successfulEmails = emailEmbeddings.filter(r => r.status === 'fulfilled').length
+                console.log(`Successfully created embeddings for ${successfulEmails} emails`)
+              } catch (gmailError) {
+                console.error('Error syncing Gmail:', gmailError)
+              }
+              
+              // Sync Calendar
+              try {
+                const calendarService = new CalendarService(account.refresh_token)
+                const events = await calendarService.fetchEvents(updatedUser.id)
+                console.log(`Fetched ${events.length} calendar events`)
+                
+                const eventEmbeddings = await Promise.allSettled(
+                  events.map(event => embeddingService.processEventForRAG(updatedUser.id, event))
+                )
+                
+                const successfulEvents = eventEmbeddings.filter(r => r.status === 'fulfilled').length
+                console.log(`Successfully created embeddings for ${successfulEvents} calendar events`)
+              } catch (calendarError) {
+                console.error('Error syncing Calendar:', calendarError)
+              }
+            } catch (syncError) {
+              console.error('Error during automatic Google sync:', syncError)
+              // Don't fail the sign-in if sync fails
+            }
+          }
+        }
+        return true
+      } catch (error) {
+        console.error('Error in signIn callback:', error)
+        return false
       }
-      return true
+    },
+    async redirect({ url, baseUrl }) {
+      // Ensure the redirect URL is safe and doesn't contain invalid characters
+      if (url.startsWith('/')) {
+        return `${baseUrl}${url}`
+      } else if (url.startsWith(baseUrl)) {
+        return url
+      }
+      return baseUrl
     }
   },
   pages: {
     signIn: '/login',
-    error: '/auth/error'
+    error: '/login'
   },
   session: {
-    strategy: 'jwt'
-  }
+    strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+  },
+  debug: process.env.NODE_ENV === 'development'
 }
 
 export default NextAuth(authOptions)

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { signOut, useSession } from 'next-auth/react'
 import { useRouter } from 'next/router'
-import { User, Send, SquarePen, LogOut, ChevronUp, X, Paperclip, ThumbsUp, ThumbsDown, Share, MoreHorizontal } from 'lucide-react'
+import { User, Send, SquarePen, LogOut, ChevronUp, X, Paperclip, ThumbsUp, ThumbsDown, Share, MoreHorizontal, Settings, Loader2, ExternalLink } from 'lucide-react'
 import { useHubSpot } from '@/hooks/useHubSpot'
 import {
   Sidebar,
@@ -26,6 +26,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { SettingsDialog } from '@/components/SettingsDialog'
 
 const SidebarHeaderContent = () => {
   const { state } = useSidebar()
@@ -59,6 +60,8 @@ interface Message {
   content: string
   sender: 'user' | 'ai'
   timestamp: Date
+  sources?: any[]
+  isLoading?: boolean
 }
 
 const Dashboard = () => {
@@ -102,6 +105,72 @@ const Dashboard = () => {
     }
     setChats([newChat, ...chats])
     setSelectedChat(newChat.id)
+    setMessages([])
+  }
+
+  const sendMessage = async (content: string) => {
+    if (!content.trim()) return
+
+    // Add user message
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      content,
+      sender: 'user',
+      timestamp: new Date()
+    }
+    
+    // Add loading AI message
+    const loadingMessage: Message = {
+      id: (Date.now() + 1).toString(),
+      content: 'Thinking...',
+      sender: 'ai',
+      timestamp: new Date(),
+      isLoading: true
+    }
+
+    setMessages(prev => [...prev, userMessage, loadingMessage])
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: content }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to get response')
+      }
+
+      // Update loading message with actual response
+      const aiMessage: Message = {
+        id: loadingMessage.id,
+        content: data.response,
+        sender: 'ai',
+        timestamp: new Date(),
+        sources: data.sources || []
+      }
+
+      setMessages(prev => prev.map(msg => 
+        msg.id === loadingMessage.id ? aiMessage : msg
+      ))
+
+    } catch (error) {
+      console.error('Error sending message:', error)
+      
+      // Update loading message with error
+      const errorMessage: Message = {
+        id: loadingMessage.id,
+        content: 'Sorry, I encountered an error processing your message. Please try again.',
+        sender: 'ai',
+        timestamp: new Date()
+      }
+
+      setMessages(prev => prev.map(msg => 
+        msg.id === loadingMessage.id ? errorMessage : msg
+      ))
+    }
   }
 
   if (status === 'loading') {
@@ -233,6 +302,12 @@ const Dashboard = () => {
                   side="top" 
                   className="w-[--radix-dropdown-menu-trigger-width]"
                 >
+                  <SettingsDialog>
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                      <Settings className="mr-2 size-4" />
+                      <span>Settings</span>
+                    </DropdownMenuItem>
+                  </SettingsDialog>
                   <DropdownMenuItem 
                     onClick={handleSignOut}
                     className="text-red-600 focus:text-red-600"
@@ -269,14 +344,9 @@ const Dashboard = () => {
                         className="flex h-14 w-full rounded-full border border-input bg-background px-6 py-3 text-sm shadow-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 pr-12"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                            const newMessage: Message = {
-                              id: Date.now().toString(),
-                              content: e.currentTarget.value,
-                              sender: 'user',
-                              timestamp: new Date()
-                            }
-                            setMessages([newMessage])
+                            const content = e.currentTarget.value
                             e.currentTarget.value = ''
+                            sendMessage(content)
                           }
                         }}
                       />
@@ -306,8 +376,30 @@ const Dashboard = () => {
                               ? 'bg-[#f0f5f5] text-gray-900' 
                               : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
                           }`}>
-                            <p className="text-base whitespace-pre-wrap">{message.content}</p>
+                            {message.isLoading ? (
+                              <div className="flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <p className="text-base">{message.content}</p>
+                              </div>
+                            ) : (
+                              <p className="text-base whitespace-pre-wrap">{message.content}</p>
+                            )}
                           </div>
+                          {message.sources && message.sources.length > 0 && (
+                            <div className="text-xs space-y-1">
+                              <p className="text-gray-500 font-medium">Sources:</p>
+                              {message.sources.map((source, index) => (
+                                <div key={index} className="flex items-center gap-1 text-gray-600 bg-gray-50 rounded px-2 py-1">
+                                  <ExternalLink className="h-3 w-3" />
+                                  <span className="capitalize">{source.sourceType.replace('_', ' ')}</span>
+                                  {source.title && <span>: {source.title}</span>}
+                                  <span className="ml-auto text-gray-400">
+                                    {Math.round((source.similarity || 0) * 100)}% match
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           {message.sender === 'ai' && (
                             <div className="flex items-center gap-1 px-2">
                               <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
@@ -357,14 +449,9 @@ const Dashboard = () => {
                         className="flex h-14 w-full rounded-full border border-input bg-background px-6 py-3 text-sm shadow-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 pr-12"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                            const newMessage: Message = {
-                              id: Date.now().toString(),
-                              content: e.currentTarget.value,
-                              sender: 'user',
-                              timestamp: new Date()
-                            }
-                            setMessages([...messages, newMessage])
+                            const content = e.currentTarget.value
                             e.currentTarget.value = ''
+                            sendMessage(content)
                           }
                         }}
                       />
