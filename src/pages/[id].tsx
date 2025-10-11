@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { signOut } from 'next-auth/react'
 import { useRouter } from 'next/router'
-import { User, Send, SquarePen, LogOut, ChevronUp, X, Paperclip, ThumbsUp, ThumbsDown, Share, MoreHorizontal, Settings, Loader2, ExternalLink } from 'lucide-react'
+import { User, Send, SquarePen, LogOut, ChevronUp, X, Paperclip, ThumbsUp, ThumbsDown, Share, MoreHorizontal, Settings, Loader2, ExternalLink, Mail, Calendar, Users, FileText } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useHubSpot } from '@/hooks/useHubSpot'
 import {
@@ -456,62 +456,181 @@ const ChatPage = () => {
                           )}
                         </div>
                         {message.sources && message.sources.length > 0 && (
-                          <div className="mt-4 space-y-3">
-                            <p className="text-sm text-gray-600 font-medium">Sources:</p>
-                            {message.sources.map((source, index) => {
-                              return (
-                              <div key={index} className="border border-gray-200 rounded-lg p-3 bg-white hover:shadow-sm transition-shadow">
-                                <div className="flex items-start justify-between">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-2">
-                                      <button
-                                        onClick={() => {
-                                          if (source.sourceType === 'email' && source.gmailId) {
-                                            const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${source.gmailId}`;
+                          <div className="mt-4">
+                            {(() => {
+                              const primarySource = message.sources[0];
+                              const sourceType = primarySource.sourceType;
+                              
+                              if (sourceType === 'email') {
+                                return (
+                                  <div className="border border-gray-200 rounded-lg p-4 bg-white hover:shadow-sm transition-shadow">
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <Mail className="h-4 w-4 text-red-600" />
+                                          <span className="text-sm font-medium text-gray-700">Email</span>
+                                          <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">
+                                            {Math.round((primarySource.similarity || 0) * 100)}% match
+                                          </span>
+                                        </div>
+                                        {primarySource.title && (
+                                          <h4 className="text-sm font-semibold text-gray-900 mb-2">{primarySource.title}</h4>
+                                        )}
+                                        {primarySource.metadata?.from && (
+                                          <p className="text-xs text-gray-600 mb-1">From: {primarySource.metadata.from}</p>
+                                        )}
+                                        {primarySource.metadata?.date && (
+                                          <p className="text-xs text-gray-600 mb-2">
+                                            Date: {new Date(primarySource.metadata.date).toLocaleDateString()}
+                                          </p>
+                                        )}
+                                        <p className="text-sm text-gray-700 line-clamp-3">{primarySource.preview}</p>
+                                      </div>
+                                      {primarySource.gmailId && (
+                                        <button
+                                          onClick={() => {
+                                            const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${primarySource.gmailId}`;
                                             window.open(gmailUrl, '_blank');
-                                          }
-                                        }}
-                                        className={`${source.sourceType === 'email' && source.gmailId ? 'text-blue-500 hover:text-blue-700' : 'text-gray-400'} transition-colors`}
-                                        title={source.sourceType === 'email' && source.gmailId ? "Open email in Gmail" : "Not available"}
-                                      >
-                                        <ExternalLink className="h-4 w-4" />
-                                      </button>
-                                      <span className="text-sm font-medium text-gray-700 capitalize">
-                                        {source.sourceType.replace('_', ' ')}
-                                      </span>
-                                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                                        {Math.round((source.similarity || 0) * 100)}% match
-                                      </span>
+                                          }}
+                                          className="ml-3 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded transition-colors"
+                                        >
+                                          <ExternalLink className="h-3 w-3" />
+                                          Open in Gmail
+                                        </button>
+                                      )}
                                     </div>
-                                    {source.title && (
-                                      <h4 className="text-sm font-medium text-gray-900 mb-1">{source.title}</h4>
-                                    )}
-                                    {source.metadata?.from && (
-                                      <p className="text-xs text-gray-600 mb-1">From: {source.metadata.from}</p>
-                                    )}
-                                    {source.metadata?.date && (
-                                      <p className="text-xs text-gray-600 mb-2">
-                                        Date: {new Date(source.metadata.date).toLocaleDateString()}
-                                      </p>
-                                    )}
-                                    <p className="text-xs text-gray-500 line-clamp-2">{source.preview}</p>
                                   </div>
-                                  {source.sourceType === 'email' && source.gmailId && (
-                                    <button
-                                      onClick={() => {
-                                        const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${source.gmailId}`;
-                                        window.open(gmailUrl, '_blank');
-                                      }}
-                                      className="ml-3 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
-                                    >
-                                      <ExternalLink className="h-3 w-3" />
-                                      Open
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                              );
-                            })}
+                                );
+                              } else if (sourceType === 'calendar_event') {
+                                const startDate = primarySource.metadata?.startDateTime ? new Date(primarySource.metadata.startDateTime) : null;
+                                const endDate = primarySource.metadata?.endDateTime ? new Date(primarySource.metadata.endDateTime) : null;
+                                const attendees = primarySource.metadata?.attendees || [];
+                                
+                                return (
+                                  <div className="border border-gray-200 rounded-lg p-4 bg-white hover:shadow-sm transition-shadow">
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-3">
+                                          <Calendar className="h-5 w-5 text-blue-600" />
+                                          <span className="text-sm font-medium text-gray-700">Calendar Event</span>
+                                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                                            {Math.round((primarySource.similarity || 0) * 100)}% match
+                                          </span>
+                                        </div>
+                                        
+                                        {primarySource.title && (
+                                          <h4 className="text-lg font-semibold text-gray-900 mb-3">{primarySource.title}</h4>
+                                        )}
+                                        
+                                        <div className="space-y-2 mb-3">
+                                          {startDate && (
+                                            <div className="flex items-center gap-2">
+                                              <div className="text-xs font-medium text-gray-500 w-12">Start:</div>
+                                              <div className="text-sm text-gray-900">
+                                                {startDate.toLocaleDateString()} at {startDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                              </div>
+                                            </div>
+                                          )}
+                                          {endDate && (
+                                            <div className="flex items-center gap-2">
+                                              <div className="text-xs font-medium text-gray-500 w-12">End:</div>
+                                              <div className="text-sm text-gray-900">
+                                                {endDate.toLocaleDateString()} at {endDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                              </div>
+                                            </div>
+                                          )}
+                                          {primarySource.metadata?.location && (
+                                            <div className="flex items-center gap-2">
+                                              <div className="text-xs font-medium text-gray-500 w-12">Location:</div>
+                                              <div className="text-sm text-gray-900">{primarySource.metadata.location}</div>
+                                            </div>
+                                          )}
+                                        </div>
+                                        
+                                        {attendees.length > 0 && (
+                                          <div className="mb-3">
+                                            <div className="text-xs font-medium text-gray-500 mb-2">Attendees ({attendees.length}):</div>
+                                            <div className="flex flex-wrap gap-2">
+                                              {attendees.slice(0, 5).map((attendee: any, idx: number) => (
+                                                <div key={idx} className="flex items-center gap-2 bg-gray-50 rounded-full px-3 py-1">
+                                                  <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-medium">
+                                                    {(attendee.email || attendee.displayName || 'U').charAt(0).toUpperCase()}
+                                                  </div>
+                                                  <span className="text-xs text-gray-700">
+                                                    {attendee.displayName || attendee.email || 'Unknown'}
+                                                  </span>
+                                                </div>
+                                              ))}
+                                              {attendees.length > 5 && (
+                                                <div className="flex items-center gap-1 text-xs text-gray-500">
+                                                  +{attendees.length - 5} more
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+                                        
+                                        {primarySource.preview && (
+                                          <div className="text-sm text-gray-600 bg-gray-50 rounded p-2">
+                                            {primarySource.preview}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              } else if (sourceType === 'hubspot_contact') {
+                                return (
+                                  <div className="border border-gray-200 rounded-lg p-4 bg-white hover:shadow-sm transition-shadow">
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <Users className="h-4 w-4 text-orange-600" />
+                                          <span className="text-sm font-medium text-gray-700">HubSpot Contact</span>
+                                          <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full">
+                                            {Math.round((primarySource.similarity || 0) * 100)}% match
+                                          </span>
+                                        </div>
+                                        {primarySource.title && (
+                                          <h4 className="text-sm font-semibold text-gray-900 mb-2">{primarySource.title}</h4>
+                                        )}
+                                        {primarySource.metadata?.email && (
+                                          <p className="text-xs text-gray-600 mb-1">Email: {primarySource.metadata.email}</p>
+                                        )}
+                                        {primarySource.metadata?.company && (
+                                          <p className="text-xs text-gray-600 mb-2">Company: {primarySource.metadata.company}</p>
+                                        )}
+                                        <p className="text-sm text-gray-700 line-clamp-3">{primarySource.preview}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              } else if (sourceType === 'hubspot_note') {
+                                return (
+                                  <div className="border border-gray-200 rounded-lg p-4 bg-white hover:shadow-sm transition-shadow">
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <FileText className="h-4 w-4 text-green-600" />
+                                          <span className="text-sm font-medium text-gray-700">HubSpot Note</span>
+                                          <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                                            {Math.round((primarySource.similarity || 0) * 100)}% match
+                                          </span>
+                                        </div>
+                                        {primarySource.metadata?.createdAt && (
+                                          <p className="text-xs text-gray-600 mb-2">
+                                            Created: {new Date(primarySource.metadata.createdAt).toLocaleDateString()}
+                                          </p>
+                                        )}
+                                        <p className="text-sm text-gray-700 line-clamp-3">{primarySource.preview}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              
+                              return null;
+                            })()}
                           </div>
                         )}
                         {message.role === 'assistant' && (

@@ -134,6 +134,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try {
         const ragResponse = await embeddingService.generateRAGResponse(user.id, query);
         aiResponse = ragResponse.response;
+        
+        if (ragResponse.sources && ragResponse.sources.length > 0) {
+          return res.status(200).json({
+            success: true,
+            results: enrichedResults,
+            query,
+            resultsCount: enrichedResults.length,
+            response: aiResponse,
+            sources: ragResponse.sources,
+            chatId,
+          });
+        }
       } catch (ragError) {
         aiResponse = `Found ${enrichedResults.length} relevant results for your query.`;
       }
