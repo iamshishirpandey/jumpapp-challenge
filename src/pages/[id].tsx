@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { signOut } from 'next-auth/react'
 import { useRouter } from 'next/router'
-import { User, Send, SquarePen, LogOut, ChevronUp, X, Paperclip, ThumbsUp, ThumbsDown, Share, MoreHorizontal, Settings, Loader2, ExternalLink, Mail, Calendar, Users, FileText } from 'lucide-react'
+import { User, Send, SquarePen, LogOut, ChevronUp, X, Paperclip, ThumbsUp, ThumbsDown, Share, MoreHorizontal, Settings, Loader2, ExternalLink, Mail, Calendar, Users, FileText, Plus } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useHubSpot } from '@/hooks/useHubSpot'
 import {
@@ -27,10 +27,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { SettingsDialog } from '@/components/SettingsDialog'
 
 const SidebarHeaderContent = () => {
-  const { state } = useSidebar()
+  const { state, toggleSidebar } = useSidebar()
   const [isHovered, setIsHovered] = useState(false)
   const isCollapsed = state === 'collapsed'
 
@@ -50,7 +51,13 @@ const SidebarHeaderContent = () => {
             </div>
           )}
         </div>
-        {!isCollapsed && <SidebarTrigger className="ml-auto" />}
+        <button 
+          onClick={toggleSidebar}
+          className="md:hidden ml-auto p-1 hover:bg-gray-100 rounded"
+        >
+          <X className="h-5 w-5 text-gray-600" />
+        </button>
+        {!isCollapsed && <SidebarTrigger className="ml-auto hidden md:block" />}
       </div>
     </SidebarHeader>
   )
@@ -73,6 +80,21 @@ interface Chat {
   messages?: Message[]
 }
 
+const MobileSidebarTrigger = () => {
+  const { toggleSidebar } = useSidebar()
+  
+  return (
+    <button 
+      className="md:hidden -ml-4 mr-4 p-2"
+      onClick={toggleSidebar}
+    >
+      <svg width="24" height="24" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg" className="text-gray-600">
+        <path d="M11.6663 12.6686L11.801 12.6823C12.1038 12.7445 12.3313 13.0125 12.3313 13.3337C12.3311 13.6547 12.1038 13.9229 11.801 13.985L11.6663 13.9987H3.33325C2.96609 13.9987 2.66839 13.7008 2.66821 13.3337C2.66821 12.9664 2.96598 12.6686 3.33325 12.6686H11.6663ZM16.6663 6.00163L16.801 6.0153C17.1038 6.07747 17.3313 6.34546 17.3313 6.66667C17.3313 6.98788 17.1038 7.25586 16.801 7.31803L16.6663 7.33171H3.33325C2.96598 7.33171 2.66821 7.03394 2.66821 6.66667C2.66821 6.2994 2.96598 6.00163 3.33325 6.00163H16.6663Z"></path>
+      </svg>
+    </button>
+  )
+}
+
 const ChatPage = () => {
   const { user, isLoading: isAuthLoading } = useAuth()
   const router = useRouter()
@@ -84,6 +106,7 @@ const ChatPage = () => {
   const [isLoadingChats, setIsLoadingChats] = useState(true)
   const [isCreatingChat, setIsCreatingChat] = useState(false)
   const [skipLoadMessages, setSkipLoadMessages] = useState(false)
+  const [mobileTab, setMobileTab] = useState('chat')
 
   useEffect(() => {
     if (user) {
@@ -414,17 +437,80 @@ const ChatPage = () => {
       </Sidebar>
 
       <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2">
-          <div className="flex items-center gap-2 px-4">
-            <SidebarTrigger className="md:hidden" />
+        <header className="flex h-16 shrink-0 items-center gap-2 border-b md:border-b-0 sticky top-0 bg-white z-10 md:static">
+          <div className="flex items-center w-full px-4">
+            <MobileSidebarTrigger />
+            <div className="md:hidden flex items-center justify-between w-full">
+              <div className="flex bg-white rounded-lg p-1">
+                <button
+                  onClick={() => setMobileTab('chat')}
+                  className={`text-sm font-medium px-3 py-1.5 rounded-md transition-colors ${
+                    mobileTab === 'chat' ? 'bg-gray-100 text-black' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Chat
+                </button>
+                <button
+                  onClick={() => setMobileTab('history')}
+                  className={`text-sm font-medium px-3 py-1.5 rounded-md transition-colors ${
+                    mobileTab === 'history' ? 'bg-gray-100 text-black' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  History
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  handleNewChat()
+                  setMobileTab('chat')
+                }}
+                className="flex items-center gap-1 text-sm font-medium px-3 py-1.5 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
+              >
+                <Plus className="h-3 w-3" />
+                New thread
+              </button>
+            </div>
           </div>
         </header>
 
         <div className="flex flex-1 flex-col gap-4 p-0">
-          {messages.length === 0 ? (
+          {mobileTab === 'history' ? (
+            <div className="md:hidden flex-1 overflow-y-auto px-4 py-6">
+              <div className="mx-auto max-w-3xl">
+                <h2 className="text-lg font-semibold mb-4">Chat History</h2>
+                {isLoadingChats ? (
+                  <div className="text-sm text-muted-foreground">Loading chats...</div>
+                ) : chats.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No chat history yet</div>
+                ) : (
+                  <div className="space-y-2">
+                    {chats.map((chat) => (
+                      <div
+                        key={chat.id}
+                        onClick={() => {
+                          router.push(`/${chat.id}`)
+                          setMobileTab('chat')
+                        }}
+                        className={`p-3 rounded-lg border cursor-pointer hover:bg-gray-50 ${
+                          id === chat.id ? 'bg-gray-100 border-gray-300' : 'bg-white border-gray-200'
+                        }`}
+                      >
+                        <span className="text-sm font-medium">{chat.title || 'Untitled Chat'}</span>
+                        {chat.createdAt && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            {new Date(chat.createdAt).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : messages.length === 0 ? (
             <div className="flex flex-col h-full">
               <div className="flex-1 flex flex-col items-center justify-center px-4 pb-[20vh]">
-                <h1 className="text-3xl font-semibold mb-8 text-gray-700 dark:text-gray-300">Where should we begin?</h1>
+                <h1 className="text-[28px] font-normal mb-8" style={{ color: '#0d0d0d' }}>Where should we begin?</h1>
                 <div className="w-full max-w-3xl">
                   <div className="relative">
                     <input
@@ -464,18 +550,18 @@ const ChatPage = () => {
                   {messages.map((message) => (
                     <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                       <div className={`flex flex-col space-y-2 ${message.role === 'user' ? 'items-end' : 'items-start max-w-[80%]'}`}>
-                        <div className={`rounded-2xl px-4 py-2 ${
+                        <div className={`rounded-lg px-4 py-2 ${
                           message.role === 'user' 
                             ? 'bg-[#f0f5f5] text-gray-900' 
-                            : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+                            : 'text-gray-900 dark:text-gray-100'
                         }`}>
                           {message.isLoading ? (
                             <div className="flex items-center gap-2">
                               <Loader2 className="h-4 w-4 animate-spin" />
-                              <p className="text-base">{message.content}</p>
+                              <p className="text-base chat-message">{message.content}</p>
                             </div>
                           ) : (
-                            <p className="text-base whitespace-pre-wrap">{message.content}</p>
+                            <p className="text-base whitespace-pre-wrap chat-message">{message.content}</p>
                           )}
                         </div>
                         {message.sources && message.sources.length > 0 && (
@@ -654,25 +740,6 @@ const ChatPage = () => {
                               
                               return null;
                             })()}
-                          </div>
-                        )}
-                        {message.role === 'assistant' && (
-                          <div className="flex items-center gap-1 px-2">
-                            <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
-                              <Paperclip className="h-3.5 w-3.5 text-gray-500" />
-                            </button>
-                            <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
-                              <ThumbsUp className="h-3.5 w-3.5 text-gray-500" />
-                            </button>
-                            <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
-                              <ThumbsDown className="h-3.5 w-3.5 text-gray-500" />
-                            </button>
-                            <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
-                              <Share className="h-3.5 w-3.5 text-gray-500" />
-                            </button>
-                            <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
-                              <MoreHorizontal className="h-3.5 w-3.5 text-gray-500" />
-                            </button>
                           </div>
                         )}
                       </div>

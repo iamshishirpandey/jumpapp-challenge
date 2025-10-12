@@ -9,7 +9,7 @@ export class EmbeddingService {
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY;
     this.genAI = new GoogleGenerativeAI(apiKey || 'dummy-key');
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
     this.embeddingModel = this.genAI.getGenerativeModel({ model: 'text-embedding-004' });
   }
 
