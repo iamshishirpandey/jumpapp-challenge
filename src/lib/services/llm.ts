@@ -187,6 +187,17 @@ EMAIL SENDING INSTRUCTIONS:
 - For test emails, use a subject like "Test Email" and a simple body message
 - You MUST use the send_email tool for any email sending requests
 
+CALENDAR EVENT INSTRUCTIONS:
+- When users ask to schedule/create meetings, ALWAYS use the create_calendar_event function
+- Parse natural language intelligently: "tomorrow at 3 PM" = next day at 15:00
+- Extract email addresses from requests like "meeting with John at john@email.com"
+- If only a name is provided, look for matching emails in previous conversations
+- Current date context: October 12, 2025 (use this to resolve "tomorrow", "day after tomorrow", etc.)
+- Generate appropriate titles: "Meeting with [Name]" or "Call with [Name]"
+- Default meeting duration: 1 hour unless specified
+- Default location: "Video Call" unless specified
+- Always send notifications to attendees unless told otherwise
+
 Available tools: send_email, reply_to_email, create_calendar_event, check_calendar_availability, search_calendar_events, update_calendar_event, create_hubspot_contact, create_hubspot_note, search_hubspot_contacts, search_emails, get_email_thread, create_task, save_ongoing_instruction`
 
     if (ragSources && ragSources.length > 0) {

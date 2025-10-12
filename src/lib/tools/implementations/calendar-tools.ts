@@ -1,27 +1,59 @@
 import { calendar_v3, google } from 'googleapis'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 
 async function getCalendarClient(userId: string): Promise<calendar_v3.Calendar> {
-  const session = await getServerSession(authOptions)
-  if (!session?.accessToken) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      accounts: {
+        where: { provider: 'google' }
+      }
+    }
+  })
+
+  if (!user || !user.accounts.length) {
+    throw new Error('No Google account found for user')
+  }
+
+  const googleAccount = user.accounts[0]
+  if (!googleAccount.access_token) {
     throw new Error('No access token available')
   }
 
-  const oauth2Client = new google.auth.OAuth2()
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET
+  )
+  
   oauth2Client.setCredentials({
-    access_token: (session as any).accessToken,
-    refresh_token: (session as any).refreshToken
+    access_token: googleAccount.access_token,
+    refresh_token: googleAccount.refresh_token
   })
 
   return google.calendar({ version: 'v3', auth: oauth2Client })
 }
 
+async function getUserTimezone(userId: string): Promise<string> {
+  try {
+    const calendar = await getCalendarClient(userId)
+    const settings = await calendar.settings.get({
+      setting: 'timezone'
+    })
+    return settings.data.value || 'America/Denver'
+  } catch (error) {
+    console.log('Could not fetch user timezone, using default America/Denver')
+    return 'America/Denver'
+  }
+}
+
 export async function createCalendarEvent(parameters: Record<string, any>, userId: string) {
-  const { title, description, startDateTime, endDateTime, attendees, location, sendNotifications = true } = parameters
+  const { title, description, startDateTime, endDateTime, attendees, location = 'Video Call', sendNotifications = true } = parameters
   
   try {
     const calendar = await getCalendarClient(userId)
+    const userTimezone = await getUserTimezone(userId)
+    
+    console.log('📅 Creating calendar event:', { title, startDateTime, endDateTime, attendees, location })
     
     const attendeeList = attendees ? attendees.split(',').map((email: string) => ({ email: email.trim() })) : []
 
@@ -31,11 +63,11 @@ export async function createCalendarEvent(parameters: Record<string, any>, userI
       location,
       start: {
         dateTime: startDateTime,
-        timeZone: 'America/New_York',
+        timeZone: userTimezone,
       },
       end: {
         dateTime: endDateTime,
-        timeZone: 'America/New_York',
+        timeZone: userTimezone,
       },
       attendees: attendeeList,
       reminders: {
@@ -209,6 +241,7 @@ export async function updateCalendarEvent(parameters: Record<string, any>, userI
   
   try {
     const calendar = await getCalendarClient(userId)
+    const userTimezone = await getUserTimezone(userId)
     
     const existingEvent = await calendar.events.get({
       calendarId: 'primary',
@@ -225,14 +258,14 @@ export async function updateCalendarEvent(parameters: Record<string, any>, userI
     if (startDateTime) {
       updatedEvent.start = {
         dateTime: startDateTime,
-        timeZone: 'America/New_York'
+        timeZone: userTimezone
       }
     }
 
     if (endDateTime) {
       updatedEvent.end = {
         dateTime: endDateTime,
-        timeZone: 'America/New_York'
+        timeZone: userTimezone
       }
     }
 

@@ -68,33 +68,33 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: 'create_calendar_event',
-    description: 'Create a new calendar event',
+    description: 'Create a new calendar event. Can intelligently parse natural language requests like "Schedule a meeting with John at john@email.com for tomorrow at 3 PM" or "Set up a call with Sonia Aryal on soniaaryal12@gmail.com for October 15, 2025 at 2 PM". Automatically extracts attendee names, emails, dates, and times from natural language.',
     parameters: {
       type: 'object',
       properties: {
         title: {
           type: 'string',
-          description: 'Title of the calendar event'
+          description: 'Title of the calendar event. If not explicitly provided, generate based on the request (e.g., "Meeting with John", "Call with Sonia Aryal")'
         },
         description: {
           type: 'string',
-          description: 'Description of the event'
+          description: 'Description of the event. Include any additional context from the request.'
         },
         startDateTime: {
           type: 'string',
-          description: 'Start date and time in ISO format (e.g., 2024-01-15T10:00:00)'
+          description: 'Start date and time in ISO format (e.g., 2024-01-15T15:00:00). Parse natural language like "tomorrow at 3 PM", "day after tomorrow", "October 15, 2025 at 2 PM". Use current date context to resolve relative dates. Current date is October 12, 2025.'
         },
         endDateTime: {
           type: 'string',
-          description: 'End date and time in ISO format (e.g., 2024-01-15T11:00:00)'
+          description: 'End date and time in ISO format. Default to 1 hour after start time unless specified otherwise.'
         },
         attendees: {
           type: 'string',
-          description: 'Email addresses of attendees (comma-separated)'
+          description: 'Comma-separated list of attendee email addresses. Extract emails from the request (e.g., "soniaaryal12@gmail.com"). If only a name is provided, search previous conversations for matching emails.'
         },
         location: {
           type: 'string',
-          description: 'Location of the event (optional)'
+          description: 'Location of the meeting. Default to "Video Call" if not specified.'
         },
         sendNotifications: {
           type: 'boolean',
