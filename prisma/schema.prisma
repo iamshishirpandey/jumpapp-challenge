@@ -68,6 +68,9 @@ model User {
   calendarEvents  CalendarEvent[]
   documents       Document[]
   chats           Chat[]
+  agentTasks      AgentTask[]
+  agentMemory     AgentMemory[]
+  agentWorkflows  AgentWorkflow[]
 }
 
 model VerificationToken {
@@ -183,16 +186,16 @@ model CalendarEvent {
 }
 
 model Document {
-  id            String                  @id @default(cuid())
+  id            String    @id @default(cuid())
   userId        String
-  sourceType    String                  
-  sourceId      String                  
+  sourceType    String    // 'email', 'hubspot_contact', 'hubspot_note', 'calendar_event', 'google_contact'
+  sourceId      String    // Original ID from source system
   title         String?
-  content       String                  @db.Text
+  content       String    @db.Text
   metadata      Json?
-  embedding     Unsupported("vector")? 
-  createdAt     DateTime                @default(now())
-  updatedAt     DateTime                @updatedAt
+  embedding     String?   // Vector embedding as string (will be converted to vector type in DB)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
   
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   
@@ -224,4 +227,84 @@ model Message {
   chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
   
   @@index([chatId, createdAt])
+}
+
+model AgentTask {
+  id            String    @id @default(cuid())
+  userId        String
+  type          String    // 'schedule_appointment', 'send_email', 'search_contacts', etc.
+  status        String    @default("pending") // 'pending', 'in_progress', 'completed', 'failed', 'waiting'
+  priority      Int       @default(0)
+  data          Json      // Task-specific data
+  context       Json?     // Additional context and metadata
+  result        Json?     // Task execution result
+  error         String?   // Error message if failed
+  parentTaskId  String?   // For subtasks
+  retryCount    Int       @default(0)
+  maxRetries    Int       @default(3)
+  scheduledFor  DateTime? // When to execute the task
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentTask   AgentTask?        @relation("TaskHierarchy", fields: [parentTaskId], references: [id])
+  subtasks     AgentTask[]       @relation("TaskHierarchy")
+  memory       AgentMemory[]
+  toolCalls    AgentToolCall[]
+  
+  @@index([userId, status])
+  @@index([scheduledFor])
+  @@index([parentTaskId])
+}
+
+model AgentMemory {
+  id        String    @id @default(cuid())
+  userId    String
+  taskId    String?
+  type      String    
+  key       String 
+  value     Json     
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task AgentTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, key])
+  @@index([taskId])
+  @@index([expiresAt])
+}
+
+model AgentToolCall {
+  id          String    @id @default(cuid())
+  taskId      String
+  tool        String    
+  input       Json      
+  output      Json?     
+  status      String    @default("pending") 
+  error       String?   
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  
+  task AgentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  @@index([taskId])
+  @@index([status])
+}
+
+model AgentWorkflow {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String   
+  description String?
+  steps       Json     
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, isActive])
 }
