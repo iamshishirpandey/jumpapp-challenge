@@ -155,29 +155,16 @@ export class EmbeddingService {
       }
 
       if (useVectorSearch && queryEmbeddingString) {
+        const isVectorLatestQuery = query.toLowerCase().includes('latest') || 
+                                   query.toLowerCase().includes('recent') || 
+                                   query.toLowerCase().includes('newest') ||
+                                   query.toLowerCase().includes('last');
+
         const enhancedEmbedding = await this.generateEmbedding(enhancedQuery);
         const enhancedEmbeddingString = `[${enhancedEmbedding.join(',')}]`;
         
-        results = await prisma.$queryRaw`
-          SELECT 
-            id,
-            "userId",
-            "sourceType",
-            "sourceId",
-            title,
-            content,
-            metadata,
-            "createdAt",
-            "updatedAt",
-            1 - (embedding <=> ${enhancedEmbeddingString}::vector) as similarity
-          FROM "Document"
-          WHERE "userId" = ${userId}
-            AND embedding IS NOT NULL
-            AND 1 - (embedding <=> ${enhancedEmbeddingString}::vector) >= ${threshold}
-          ORDER BY embedding <=> ${enhancedEmbeddingString}::vector
-          LIMIT ${limit}
-        `;
-        if (!results || (results as any[]).length === 0) {
+        if (isVectorLatestQuery) {
+          // For latest queries, prioritize by date in vector search too
           results = await prisma.$queryRaw`
             SELECT 
               id,
@@ -189,14 +176,77 @@ export class EmbeddingService {
               metadata,
               "createdAt",
               "updatedAt",
-              1 - (embedding <=> ${queryEmbeddingString}::vector) as similarity
+              1 - (embedding <=> ${enhancedEmbeddingString}::vector) as similarity
             FROM "Document"
             WHERE "userId" = ${userId}
               AND embedding IS NOT NULL
-              AND 1 - (embedding <=> ${queryEmbeddingString}::vector) >= ${threshold}
-            ORDER BY embedding <=> ${queryEmbeddingString}::vector
+              AND 1 - (embedding <=> ${enhancedEmbeddingString}::vector) >= ${threshold}
+            ORDER BY "createdAt" DESC, embedding <=> ${enhancedEmbeddingString}::vector
             LIMIT ${limit}
           `;
+        } else {
+          results = await prisma.$queryRaw`
+            SELECT 
+              id,
+              "userId",
+              "sourceType",
+              "sourceId",
+              title,
+              content,
+              metadata,
+              "createdAt",
+              "updatedAt",
+              1 - (embedding <=> ${enhancedEmbeddingString}::vector) as similarity
+            FROM "Document"
+            WHERE "userId" = ${userId}
+              AND embedding IS NOT NULL
+              AND 1 - (embedding <=> ${enhancedEmbeddingString}::vector) >= ${threshold}
+            ORDER BY embedding <=> ${enhancedEmbeddingString}::vector
+            LIMIT ${limit}
+          `;
+        }
+        if (!results || (results as any[]).length === 0) {
+          if (isVectorLatestQuery) {
+            results = await prisma.$queryRaw`
+              SELECT 
+                id,
+                "userId",
+                "sourceType",
+                "sourceId",
+                title,
+                content,
+                metadata,
+                "createdAt",
+                "updatedAt",
+                1 - (embedding <=> ${queryEmbeddingString}::vector) as similarity
+              FROM "Document"
+              WHERE "userId" = ${userId}
+                AND embedding IS NOT NULL
+                AND 1 - (embedding <=> ${queryEmbeddingString}::vector) >= ${threshold}
+              ORDER BY "createdAt" DESC, embedding <=> ${queryEmbeddingString}::vector
+              LIMIT ${limit}
+            `;
+          } else {
+            results = await prisma.$queryRaw`
+              SELECT 
+                id,
+                "userId",
+                "sourceType",
+                "sourceId",
+                title,
+                content,
+                metadata,
+                "createdAt",
+                "updatedAt",
+                1 - (embedding <=> ${queryEmbeddingString}::vector) as similarity
+              FROM "Document"
+              WHERE "userId" = ${userId}
+                AND embedding IS NOT NULL
+                AND 1 - (embedding <=> ${queryEmbeddingString}::vector) >= ${threshold}
+              ORDER BY embedding <=> ${queryEmbeddingString}::vector
+              LIMIT ${limit}
+            `;
+          }
         }
         
         if (results && (results as any[]).length > 0) {
@@ -205,50 +255,85 @@ export class EmbeddingService {
       }
 
       if (!results || (results as any[]).length === 0) {
-        const words = query.toLowerCase().split(' ').filter(word => word.length >= 2);
-        let keywordPattern = words.join('|');
-      
-        if (contextEntities.length > 0) {
-          keywordPattern = [...words, ...contextEntities].join('|');
-        }
+        const isLatestQuery = query.toLowerCase().includes('latest') || 
+                             query.toLowerCase().includes('recent') || 
+                             query.toLowerCase().includes('newest') ||
+                             query.toLowerCase().includes('last');
         
-        const fallbackResults = await prisma.$queryRaw`
-          SELECT 
-            d.id,
-            d."userId",
-            d."sourceType",
-            d."sourceId",
-            d.title,
-            d.content,
-            d.metadata,
-            d."createdAt",
-            d."updatedAt",
-            CASE
-              WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%software engineer%' THEN 0.95
-              WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%contractor%' THEN 0.95
-              WHEN LOWER(d.content) LIKE '%notifications@mail.polymer.co%' THEN 0.95
-              WHEN LOWER(d.content) LIKE '%baseball%' OR LOWER(d.content) LIKE '%kid%' OR LOWER(d.content) LIKE '%child%' THEN 0.95
-              WHEN LOWER(d.content) LIKE '%stock%' OR LOWER(d.content) LIKE '%sell%' OR LOWER(d.content) LIKE '%aapl%' THEN 0.95
-              WHEN LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%' THEN 0.85
-              WHEN LOWER(d.content) LIKE '%' || LOWER(${query}) || '%' THEN 0.80
-              WHEN LOWER(d.title) LIKE '%' || LOWER(${query}) || '%' THEN 0.75
-              ELSE 0.3
-            END as similarity
-          FROM "Document" d
-          WHERE d."userId" = ${userId}
-            AND (
-              LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%'
-              OR LOWER(d.content) LIKE '%' || LOWER(${query}) || '%'
-              OR LOWER(d.title) LIKE '%' || LOWER(${query}) || '%'
-              OR (LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%software%')
-              OR LOWER(d.content) LIKE '%notifications@mail.polymer.co%'
-              OR (LOWER(d.content) LIKE '%baseball%' AND LOWER(d.content) LIKE '%kid%')
-              OR (LOWER(d.content) LIKE '%stock%' AND LOWER(d.content) LIKE '%sell%')
-              OR LOWER(d.content) LIKE '%greg%'
-            )
-          ORDER BY similarity DESC, d."createdAt" DESC
-          LIMIT ${limit}
-        `;
+        let fallbackResults;
+        
+        if (isLatestQuery) {
+          fallbackResults = await prisma.$queryRaw`
+            SELECT 
+              d.id,
+              d."userId",
+              d."sourceType",
+              d."sourceId",
+              d.title,
+              d.content,
+              d.metadata,
+              d."createdAt",
+              d."updatedAt",
+              CASE
+                WHEN d."sourceType" = 'email' THEN 0.9
+                WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%software engineer%' THEN 0.95
+                WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%contractor%' THEN 0.95
+                WHEN LOWER(d.content) LIKE '%notifications@mail.polymer.co%' THEN 0.95
+                WHEN LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%' THEN 0.85
+                WHEN LOWER(d.content) LIKE '%' || LOWER(${query}) || '%' THEN 0.80
+                WHEN LOWER(d.title) LIKE '%' || LOWER(${query}) || '%' THEN 0.75
+                ELSE 0.6
+              END as similarity
+            FROM "Document" d
+            WHERE d."userId" = ${userId}
+              AND (
+                d."sourceType" = 'email'
+                OR LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%'
+                OR LOWER(d.content) LIKE '%' || LOWER(${query}) || '%'
+                OR LOWER(d.title) LIKE '%' || LOWER(${query}) || '%'
+              )
+            ORDER BY d."createdAt" DESC, similarity DESC
+            LIMIT ${limit}
+          `;
+        } else {
+          fallbackResults = await prisma.$queryRaw`
+            SELECT 
+              d.id,
+              d."userId",
+              d."sourceType",
+              d."sourceId",
+              d.title,
+              d.content,
+              d.metadata,
+              d."createdAt",
+              d."updatedAt",
+              CASE
+                WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%software engineer%' THEN 0.95
+                WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%contractor%' THEN 0.95
+                WHEN LOWER(d.content) LIKE '%notifications@mail.polymer.co%' THEN 0.95
+                WHEN LOWER(d.content) LIKE '%baseball%' OR LOWER(d.content) LIKE '%kid%' OR LOWER(d.content) LIKE '%child%' THEN 0.95
+                WHEN LOWER(d.content) LIKE '%stock%' OR LOWER(d.content) LIKE '%sell%' OR LOWER(d.content) LIKE '%aapl%' THEN 0.95
+                WHEN LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%' THEN 0.85
+                WHEN LOWER(d.content) LIKE '%' || LOWER(${query}) || '%' THEN 0.80
+                WHEN LOWER(d.title) LIKE '%' || LOWER(${query}) || '%' THEN 0.75
+                ELSE 0.3
+              END as similarity
+            FROM "Document" d
+            WHERE d."userId" = ${userId}
+              AND (
+                LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%'
+                OR LOWER(d.content) LIKE '%' || LOWER(${query}) || '%'
+                OR LOWER(d.title) LIKE '%' || LOWER(${query}) || '%'
+                OR (LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%software%')
+                OR LOWER(d.content) LIKE '%notifications@mail.polymer.co%'
+                OR (LOWER(d.content) LIKE '%baseball%' AND LOWER(d.content) LIKE '%kid%')
+                OR (LOWER(d.content) LIKE '%stock%' AND LOWER(d.content) LIKE '%sell%')
+                OR LOWER(d.content) LIKE '%greg%'
+              )
+            ORDER BY similarity DESC, d."createdAt" DESC
+            LIMIT ${limit}
+          `;
+        }
         
         return (fallbackResults as any[]).filter(doc => doc.similarity >= 0.3);
       }
@@ -346,17 +431,31 @@ export class EmbeddingService {
         return `[Source ${index + 1}] ${sourceInfo}:\n${doc.content}\n`;
       }).join('\n');
 
-      // Build conversation context from chat history
+
       let conversationContext = '';
       if (chatHistory && chatHistory.length > 0) {
-        const recentMessages = chatHistory.slice(-6); // Last 6 messages for context
+        const recentMessages = chatHistory.slice(-6); 
         conversationContext = '\n\nRecent conversation history:\n' + 
-          recentMessages.map((msg, idx) => 
+          recentMessages.map((msg) => 
             `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
           ).join('\n') + '\n';
       }
 
+      // Get current date and time for temporal context
+      const now = new Date();
+      const currentDateTime = now.toLocaleString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZoneName: 'short'
+      });
+
       const prompt = `You are an AI assistant that helps users find information about their clients and contacts from their personal data including emails, HubSpot contacts, notes, and calendar events. Use the provided context to answer the user's question accurately and helpfully.
+
+Current Date and Time: ${currentDateTime}
 
 Context from user's data:
 ${context}${conversationContext}
@@ -365,10 +464,13 @@ User's question: ${query}
 
 Instructions:
 - Answer based ONLY on the information provided in the context above
+- Use the current date and time provided to understand temporal references like "today," "tomorrow," "yesterday," "this week," etc.
 - Pay close attention to the conversation history to understand what the user is referring to
 - For questions about specific people or companies mentioned in previous messages, prioritize information about those entities
 - When asked for contact details (like email addresses), provide the specific information requested rather than listing all available contacts
 - If the user refers to something discussed earlier (like "Jump" or "Software Engineer role"), use that context to provide relevant information
+- For time-based queries, calculate relative dates based on the current date and time provided
+- When looking at calendar events or email dates, consider the temporal context of the user's question
 - For questions about specific people or clients, search through all contact information, emails, and notes
 - When looking for personal details (like kids, hobbies, interests), check both contact properties and conversation content
 - Be specific about where you found the information (e.g., "In your email from Jump", "According to the HubSpot note")

@@ -4,6 +4,26 @@ import { authOptions } from '@/pages/api/auth/[...nextauth]';
 import { prisma } from '@/lib/prisma';
 import { EmbeddingService } from '@/lib/services/embeddings';
 
+function getGreetingResponse(query: string): string {
+  const lowerQuery = query.toLowerCase();
+  
+  if (lowerQuery.includes('good morning')) {
+    return "Good morning! How can I help you today?";
+  } else if (lowerQuery.includes('good afternoon')) {
+    return "Good afternoon! How can I assist you?";
+  } else if (lowerQuery.includes('good evening')) {
+    return "Good evening! What can I help you with?";
+  } else if (lowerQuery.includes('how are you') || lowerQuery.includes('how\'s it going') || lowerQuery.includes('what\'s up')) {
+    return "I'm doing well, thank you! I'm here to help you find information from your emails, contacts, and calendar. What would you like to know?";
+  } else if (lowerQuery.includes('thanks') || lowerQuery.includes('thank you')) {
+    return "You're welcome! Is there anything else I can help you with?";
+  } else if (lowerQuery.includes('bye') || lowerQuery.includes('goodbye')) {
+    return "Goodbye! Feel free to come back anytime if you need help finding information.";
+  } else {
+    return "Hi there! I'm here to help you find information from your emails, contacts, and calendar. What would you like to know?";
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST']);
@@ -29,6 +49,53 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (!query) {
       return res.status(400).json({ error: 'Query is required' });
+    }
+    const greetingPatterns = [
+      /^(hi|hello|hey|good morning|good afternoon|good evening)$/i,
+      /^(hi|hello|hey)\s*[!.]*$/i,
+      /^(how are you|how's it going|what's up)\s*[?!.]*$/i,
+      /^(thanks|thank you|bye|goodbye)\s*[!.]*$/i
+    ];
+
+    const isGreeting = greetingPatterns.some(pattern => pattern.test(query.trim()));
+    
+    if (isGreeting) {
+      const greetingResponse = getGreetingResponse(query.trim());
+      
+      if (chatId) {
+        try {
+          await prisma.message.create({
+            data: {
+              chatId,
+              role: 'user',
+              content: query,
+            },
+          });
+
+          await prisma.message.create({
+            data: {
+              chatId,
+              role: 'assistant', 
+              content: greetingResponse,
+            },
+          });
+
+          await prisma.chat.update({
+            where: { id: chatId },
+            data: { updatedAt: new Date() },
+          });
+        } catch (error) {
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        results: [],
+        query,
+        resultsCount: 0,
+        response: greetingResponse,
+        chatId,
+      });
     }
 
 
@@ -155,7 +222,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     if (enrichedResults.length > 0) {
       try {
-        // Get chat history for context if chatId is provided
         let chatHistory: any[] = [];
         if (chatId) {
           try {
