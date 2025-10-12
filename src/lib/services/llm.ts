@@ -48,7 +48,7 @@ export class LLMService {
       }))
 
       const model = genAI.getGenerativeModel({ 
-        model: 'gemini-2.5-pro',
+        model: 'gemini-1.5-flash',
         tools: tools as any
       })
 
@@ -83,8 +83,16 @@ export class LLMService {
         }
       }
 
+      let finalMessage = response.text() || 'I apologize, but I could not generate a response.'
+      
+      // If the LLM response is generic and we have RAG sources, include RAG context
+      if (ragSources && ragSources.length > 0 && 
+          (finalMessage.includes('I apologize') || finalMessage.includes('I don\'t have') || finalMessage.length < 50)) {
+        finalMessage = `Based on your data, I found some relevant information. ${finalMessage}`
+      }
+
       return {
-        message: response.text() || 'I apologize, but I could not generate a response.',
+        message: finalMessage,
         sources: ragSources,
         needsToolExecution: false
       }
@@ -112,7 +120,7 @@ export class LLMService {
       }))
 
       const model = genAI.getGenerativeModel({ 
-        model: 'gemini-2.5-pro',
+        model: 'gemini-1.5-flash',
         tools: tools as any
       })
 

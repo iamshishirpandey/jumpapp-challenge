@@ -165,53 +165,87 @@ export async function searchEmails(parameters: Record<string, any>, userId: stri
   const { query, from, to, subject, after, before, limit = 10 } = parameters
   
   try {
-    const gmail = await getGmailClient(userId)
+    const { EmbeddingService } = await import('@/lib/services/embeddings')
+    const embeddingService = new EmbeddingService()
     
-    let searchQuery = query
-    if (from) searchQuery += ` from:${from}`
-    if (to) searchQuery += ` to:${to}`
-    if (subject) searchQuery += ` subject:${subject}`
-    if (after) searchQuery += ` after:${after}`
-    if (before) searchQuery += ` before:${before}`
+    // Build enhanced query with filters
+    let searchQuery = query || ''
+    if (from) searchQuery += ` from ${from}`
+    if (to) searchQuery += ` to ${to}`
+    if (subject) searchQuery += ` subject ${subject}`
+    if (after) searchQuery += ` after ${after}`
+    if (before) searchQuery += ` before ${before}`
+    
+    // Use RAG search for emails specifically
+    const results = await embeddingService.searchSimilarDocuments(
+      userId,
+      searchQuery,
+      limit,
+      0.3 // Lower threshold for broader search
+    )
 
-    const response = await gmail.users.messages.list({
-      userId: 'me',
-      q: searchQuery,
-      maxResults: limit
-    })
-
-    if (!response.data.messages) {
-      return { emails: [], totalCount: 0 }
+    if (!results || results.length === 0) {
+      return { 
+        emails: [], 
+        totalCount: 0, 
+        message: 'No relevant emails found. Try syncing your Gmail data first.' 
+      }
     }
 
+    // Filter for email documents and enrich with actual email data
+    const emailDocs = (results as any[]).filter(doc => doc.sourceType === 'email')
+    
     const emailDetails = await Promise.all(
-      response.data.messages.slice(0, limit).map(async (message) => {
-        const details = await gmail.users.messages.get({
-          userId: 'me',
-          id: message.id!
-        })
+      emailDocs.map(async (doc) => {
+        try {
+          const emailData = await prisma.email.findUnique({
+            where: { id: doc.sourceId },
+            select: {
+              id: true,
+              gmailId: true,
+              threadId: true,
+              from: true,
+              to: true,
+              subject: true,
+              snippet: true,
+              internalDate: true,
+              isRead: true,
+              isStarred: true
+            }
+          })
 
-        const headers = details.data.payload?.headers || []
-        const getHeader = (name: string) => headers.find(h => h.name?.toLowerCase() === name.toLowerCase())?.value || ''
-
-        return {
-          id: message.id,
-          threadId: message.threadId,
-          from: getHeader('from'),
-          to: getHeader('to'),
-          subject: getHeader('subject'),
-          date: getHeader('date'),
-          snippet: details.data.snippet || ''
+          if (emailData) {
+            return {
+              id: emailData.gmailId,
+              threadId: emailData.threadId,
+              from: emailData.from,
+              to: emailData.to,
+              subject: emailData.subject,
+              date: emailData.internalDate?.toISOString(),
+              snippet: emailData.snippet,
+              similarity: doc.similarity,
+              isRead: emailData.isRead,
+              isStarred: emailData.isStarred
+            }
+          }
+          return null
+        } catch (emailError) {
+          console.error('Error fetching email details:', emailError)
+          return null
         }
       })
     )
 
+    const validEmails = emailDetails.filter(email => email !== null)
+
     return {
-      emails: emailDetails,
-      totalCount: response.data.resultSizeEstimate || 0,
-      query: searchQuery
+      emails: validEmails,
+      totalCount: validEmails.length,
+      query: searchQuery,
+      message: `Found ${validEmails.length} relevant emails`
     }
   } catch (error) {
+    console.error('Email search error:', error)
     throw new Error(`Failed to search emails: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }

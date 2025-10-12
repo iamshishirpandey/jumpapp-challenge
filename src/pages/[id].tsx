@@ -69,6 +69,17 @@ interface Message {
   createdAt: Date
   sources?: any[]
   isLoading?: boolean
+  emailCards?: EmailCard[]
+  toolsUsed?: any[]
+}
+
+interface EmailCard {
+  type: 'email_sent'
+  messageId: string
+  to: string
+  subject: string
+  body: string
+  timestamp: string
 }
 
 interface Chat {
@@ -230,14 +241,14 @@ const ChatPage = () => {
     setMessages(prev => [...prev, userMessage, loadingMessage])
 
     try {
-      const response = await fetch('/api/chat-agent', {
+      const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           message: content,
           chatId: chatId,
           conversationHistory: messages.filter(m => !m.isLoading).map(m => ({
-            role: m.role,
+            role: m.role === 'assistant' ? 'model' : m.role,
             parts: [{ text: m.content }]
           }))
         }),
@@ -251,10 +262,12 @@ const ChatPage = () => {
 
       const aiMessage: Message = {
         id: loadingMessage.id,
-        content: data.response || `Found ${data.resultsCount || 0} relevant results for your query.`,
+        content: data.response || (data.resultsCount > 0 ? `Found ${data.resultsCount} relevant results for your query.` : 'No results found.'),
         role: 'assistant',
         createdAt: new Date(),
-        sources: data.results || []
+        sources: data.sources || [],
+        emailCards: data.emailCards || [],
+        toolsUsed: data.toolsUsed || []
       }
 
       setMessages(prev => prev.map(msg => 
@@ -565,6 +578,48 @@ const ChatPage = () => {
                             <p className="text-base whitespace-pre-wrap chat-message">{message.content}</p>
                           )}
                         </div>
+                        
+                        {/* Email Cards */}
+                        {message.emailCards && message.emailCards.length > 0 && (
+                          <div className="mt-4 space-y-3">
+                            {message.emailCards.map((emailCard, index) => (
+                              <div key={index} className="border border-green-200 rounded-lg p-4 bg-green-50 hover:shadow-sm transition-shadow">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <Mail className="h-4 w-4 text-green-600" />
+                                      <span className="text-sm font-medium text-green-700">Email Sent</span>
+                                      <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                                        ✓ Delivered
+                                      </span>
+                                    </div>
+                                    <h4 className="text-sm font-semibold text-gray-900 mb-1">
+                                      {emailCard.subject}
+                                    </h4>
+                                    <p className="text-xs text-gray-600 mb-2">
+                                      <span className="font-medium">To:</span> {emailCard.to}
+                                    </p>
+                                    <p className="text-sm text-gray-700 line-clamp-3">
+                                      {emailCard.body}
+                                    </p>
+                                    <div className="flex items-center gap-4 mt-2">
+                                      <span className="text-xs text-gray-500">
+                                        {new Date(emailCard.timestamp).toLocaleTimeString()}
+                                      </span>
+                                      <span className="text-xs text-gray-500">
+                                        ID: {emailCard.messageId}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <button className="ml-4 p-1 text-green-600 hover:text-green-800 transition-colors">
+                                    <ExternalLink className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
                         {message.sources && message.sources.length > 0 && (
                           <div className="mt-4">
                             {(() => {
