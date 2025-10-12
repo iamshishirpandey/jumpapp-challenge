@@ -59,6 +59,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const isGreeting = greetingPatterns.some(pattern => pattern.test(query.trim()));
     
+    if (chatId) {
+      try {
+        await prisma.message.create({
+          data: {
+            chatId,
+            role: 'user',
+            content: query,
+          },
+        });
+
+        await prisma.chat.update({
+          where: { id: chatId },
+          data: { updatedAt: new Date() },
+        });
+      } catch (error) {
+      }
+    }
+
     if (isGreeting) {
       const greetingResponse = getGreetingResponse(query.trim());
       
@@ -67,22 +85,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           await prisma.message.create({
             data: {
               chatId,
-              role: 'user',
-              content: query,
-            },
-          });
-
-          await prisma.message.create({
-            data: {
-              chatId,
               role: 'assistant', 
               content: greetingResponse,
             },
-          });
-
-          await prisma.chat.update({
-            where: { id: chatId },
-            data: { updatedAt: new Date() },
           });
         } catch (error) {
         }
@@ -96,26 +101,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         response: greetingResponse,
         chatId,
       });
-    }
-
-
-    if (chatId) {
-      try {
-        await prisma.message.create({
-          data: {
-            chatId,
-            role: 'user',
-            content: query,
-          },
-        });
-
-
-        await prisma.chat.update({
-          where: { id: chatId },
-          data: { updatedAt: new Date() },
-        });
-      } catch (error) {
-      }
     }
 
     const embeddingService = new EmbeddingService();

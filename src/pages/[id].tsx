@@ -146,6 +146,10 @@ const ChatPage = () => {
   }
 
   const handleNewChat = () => {
+    
+    setCurrentChat(null)
+    setMessages([])
+    
     router.push('/')
   }
 
@@ -154,7 +158,9 @@ const ChatPage = () => {
 
     let chatId = id as string
     
-    if (!chatId || chatId === 'new') {
+    if (currentChat) {
+      chatId = currentChat.id
+    } else if (!chatId || chatId === 'new') {
       setIsCreatingChat(true)
       try {
         const response = await fetch('/api/chats', {
@@ -169,7 +175,8 @@ const ChatPage = () => {
           setChats(prevChats => [newChat, ...prevChats])
           setSkipLoadMessages(true)
           
-          window.history.pushState(null, '', `/${newChat.id}`)
+    
+          router.replace(`/${newChat.id}`, undefined, { shallow: true })
         } else {
           setIsCreatingChat(false)
           return
