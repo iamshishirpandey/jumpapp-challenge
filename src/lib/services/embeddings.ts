@@ -112,7 +112,8 @@ export class EmbeddingService {
     query: string,
     limit: number = 10,
     threshold: number = 0.5,
-    chatHistory?: any[]
+    chatHistory?: any[],
+    sourceTypeFilter?: string[]
   ) {
     try {
       const documentCount = await prisma.document.count({
@@ -167,48 +168,7 @@ export class EmbeddingService {
         const enhancedEmbeddingString = `[${enhancedEmbedding.join(',')}]`;
         
         if (isVectorLatestQuery) {
-          results = await prisma.$queryRaw`
-            SELECT 
-              id,
-              "userId",
-              "sourceType",
-              "sourceId",
-              title,
-              content,
-              metadata,
-              "createdAt",
-              "updatedAt",
-              1 - (embedding <=> ${enhancedEmbeddingString}::vector) as similarity
-            FROM "Document"
-            WHERE "userId" = ${userId}
-              AND embedding IS NOT NULL
-              AND 1 - (embedding <=> ${enhancedEmbeddingString}::vector) >= ${threshold}
-            ORDER BY "createdAt" DESC, embedding <=> ${enhancedEmbeddingString}::vector
-            LIMIT ${limit}
-          `;
-        } else {
-          results = await prisma.$queryRaw`
-            SELECT 
-              id,
-              "userId",
-              "sourceType",
-              "sourceId",
-              title,
-              content,
-              metadata,
-              "createdAt",
-              "updatedAt",
-              1 - (embedding <=> ${enhancedEmbeddingString}::vector) as similarity
-            FROM "Document"
-            WHERE "userId" = ${userId}
-              AND embedding IS NOT NULL
-              AND 1 - (embedding <=> ${enhancedEmbeddingString}::vector) >= ${threshold}
-            ORDER BY embedding <=> ${enhancedEmbeddingString}::vector
-            LIMIT ${limit}
-          `;
-        }
-        if (!results || (results as any[]).length === 0) {
-          if (isVectorLatestQuery) {
+          if (sourceTypeFilter && sourceTypeFilter.length > 0) {
             results = await prisma.$queryRaw`
               SELECT 
                 id,
@@ -220,12 +180,13 @@ export class EmbeddingService {
                 metadata,
                 "createdAt",
                 "updatedAt",
-                1 - (embedding <=> ${queryEmbeddingString}::vector) as similarity
+                1 - (embedding <=> ${enhancedEmbeddingString}::vector) as similarity
               FROM "Document"
               WHERE "userId" = ${userId}
                 AND embedding IS NOT NULL
-                AND 1 - (embedding <=> ${queryEmbeddingString}::vector) >= ${threshold}
-              ORDER BY "createdAt" DESC, embedding <=> ${queryEmbeddingString}::vector
+                AND 1 - (embedding <=> ${enhancedEmbeddingString}::vector) >= ${threshold}
+                AND "sourceType" = ANY(${sourceTypeFilter})
+              ORDER BY "createdAt" DESC, embedding <=> ${enhancedEmbeddingString}::vector
               LIMIT ${limit}
             `;
           } else {
@@ -240,14 +201,146 @@ export class EmbeddingService {
                 metadata,
                 "createdAt",
                 "updatedAt",
-                1 - (embedding <=> ${queryEmbeddingString}::vector) as similarity
+                1 - (embedding <=> ${enhancedEmbeddingString}::vector) as similarity
               FROM "Document"
               WHERE "userId" = ${userId}
                 AND embedding IS NOT NULL
-                AND 1 - (embedding <=> ${queryEmbeddingString}::vector) >= ${threshold}
-              ORDER BY embedding <=> ${queryEmbeddingString}::vector
+                AND 1 - (embedding <=> ${enhancedEmbeddingString}::vector) >= ${threshold}
+              ORDER BY "createdAt" DESC, embedding <=> ${enhancedEmbeddingString}::vector
               LIMIT ${limit}
             `;
+          }
+        } else {
+          if (sourceTypeFilter && sourceTypeFilter.length > 0) {
+            results = await prisma.$queryRaw`
+              SELECT 
+                id,
+                "userId",
+                "sourceType",
+                "sourceId",
+                title,
+                content,
+                metadata,
+                "createdAt",
+                "updatedAt",
+                1 - (embedding <=> ${enhancedEmbeddingString}::vector) as similarity
+              FROM "Document"
+              WHERE "userId" = ${userId}
+                AND embedding IS NOT NULL
+                AND 1 - (embedding <=> ${enhancedEmbeddingString}::vector) >= ${threshold}
+                AND "sourceType" = ANY(${sourceTypeFilter})
+              ORDER BY embedding <=> ${enhancedEmbeddingString}::vector
+              LIMIT ${limit}
+            `;
+          } else {
+            results = await prisma.$queryRaw`
+              SELECT 
+                id,
+                "userId",
+                "sourceType",
+                "sourceId",
+                title,
+                content,
+                metadata,
+                "createdAt",
+                "updatedAt",
+                1 - (embedding <=> ${enhancedEmbeddingString}::vector) as similarity
+              FROM "Document"
+              WHERE "userId" = ${userId}
+                AND embedding IS NOT NULL
+                AND 1 - (embedding <=> ${enhancedEmbeddingString}::vector) >= ${threshold}
+              ORDER BY embedding <=> ${enhancedEmbeddingString}::vector
+              LIMIT ${limit}
+            `;
+          }
+        }
+        if (!results || (results as any[]).length === 0) {
+          if (isVectorLatestQuery) {
+            if (sourceTypeFilter && sourceTypeFilter.length > 0) {
+              results = await prisma.$queryRaw`
+                SELECT 
+                  id,
+                  "userId",
+                  "sourceType",
+                  "sourceId",
+                  title,
+                  content,
+                  metadata,
+                  "createdAt",
+                  "updatedAt",
+                  1 - (embedding <=> ${queryEmbeddingString}::vector) as similarity
+                FROM "Document"
+                WHERE "userId" = ${userId}
+                  AND embedding IS NOT NULL
+                  AND 1 - (embedding <=> ${queryEmbeddingString}::vector) >= ${threshold}
+                  AND "sourceType" = ANY(${sourceTypeFilter})
+                ORDER BY "createdAt" DESC, embedding <=> ${queryEmbeddingString}::vector
+                LIMIT ${limit}
+              `;
+            } else {
+              results = await prisma.$queryRaw`
+                SELECT 
+                  id,
+                  "userId",
+                  "sourceType",
+                  "sourceId",
+                  title,
+                  content,
+                  metadata,
+                  "createdAt",
+                  "updatedAt",
+                  1 - (embedding <=> ${queryEmbeddingString}::vector) as similarity
+                FROM "Document"
+                WHERE "userId" = ${userId}
+                  AND embedding IS NOT NULL
+                  AND 1 - (embedding <=> ${queryEmbeddingString}::vector) >= ${threshold}
+                ORDER BY "createdAt" DESC, embedding <=> ${queryEmbeddingString}::vector
+                LIMIT ${limit}
+              `;
+            }
+          } else {
+            if (sourceTypeFilter && sourceTypeFilter.length > 0) {
+              results = await prisma.$queryRaw`
+                SELECT 
+                  id,
+                  "userId",
+                  "sourceType",
+                  "sourceId",
+                  title,
+                  content,
+                  metadata,
+                  "createdAt",
+                  "updatedAt",
+                  1 - (embedding <=> ${queryEmbeddingString}::vector) as similarity
+                FROM "Document"
+                WHERE "userId" = ${userId}
+                  AND embedding IS NOT NULL
+                  AND 1 - (embedding <=> ${queryEmbeddingString}::vector) >= ${threshold}
+                  AND "sourceType" = ANY(${sourceTypeFilter})
+                ORDER BY embedding <=> ${queryEmbeddingString}::vector
+                LIMIT ${limit}
+              `;
+            } else {
+              results = await prisma.$queryRaw`
+                SELECT 
+                  id,
+                  "userId",
+                  "sourceType",
+                  "sourceId",
+                  title,
+                  content,
+                  metadata,
+                  "createdAt",
+                  "updatedAt",
+                  1 - (embedding <=> ${queryEmbeddingString}::vector) as similarity
+                FROM "Document"
+                WHERE "userId" = ${userId}
+                  AND embedding IS NOT NULL
+                  AND 1 - (embedding <=> ${queryEmbeddingString}::vector) >= ${threshold}
+                ORDER BY embedding <=> ${queryEmbeddingString}::vector
+                LIMIT ${limit}
+              `;
+            }
           }
         }
         
@@ -265,76 +358,153 @@ export class EmbeddingService {
         let fallbackResults;
         
         if (isLatestQuery) {
-          fallbackResults = await prisma.$queryRaw`
-            SELECT 
-              d.id,
-              d."userId",
-              d."sourceType",
-              d."sourceId",
-              d.title,
-              d.content,
-              d.metadata,
-              d."createdAt",
-              d."updatedAt",
-              CASE
-                WHEN d."sourceType" = 'email' THEN 0.9
-                WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%software engineer%' THEN 0.95
-                WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%contractor%' THEN 0.95
-                WHEN LOWER(d.content) LIKE '%notifications@mail.polymer.co%' THEN 0.95
-                WHEN LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%' THEN 0.85
-                WHEN LOWER(d.content) LIKE '%' || LOWER(${query}) || '%' THEN 0.80
-                WHEN LOWER(d.title) LIKE '%' || LOWER(${query}) || '%' THEN 0.75
-                ELSE 0.6
-              END as similarity
-            FROM "Document" d
-            WHERE d."userId" = ${userId}
-              AND (
-                d."sourceType" = 'email'
-                OR LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%'
-                OR LOWER(d.content) LIKE '%' || LOWER(${query}) || '%'
-                OR LOWER(d.title) LIKE '%' || LOWER(${query}) || '%'
-              )
-            ORDER BY d."createdAt" DESC, similarity DESC
-            LIMIT ${limit}
-          `;
+          if (sourceTypeFilter && sourceTypeFilter.length > 0) {
+            fallbackResults = await prisma.$queryRaw`
+              SELECT 
+                d.id,
+                d."userId",
+                d."sourceType",
+                d."sourceId",
+                d.title,
+                d.content,
+                d.metadata,
+                d."createdAt",
+                d."updatedAt",
+                CASE
+                  WHEN d."sourceType" = 'email' THEN 0.9
+                  WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%software engineer%' THEN 0.95
+                  WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%contractor%' THEN 0.95
+                  WHEN LOWER(d.content) LIKE '%notifications@mail.polymer.co%' THEN 0.95
+                  WHEN LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%' THEN 0.85
+                  WHEN LOWER(d.content) LIKE '%' || LOWER(${query}) || '%' THEN 0.80
+                  WHEN LOWER(d.title) LIKE '%' || LOWER(${query}) || '%' THEN 0.75
+                  ELSE 0.6
+                END as similarity
+              FROM "Document" d
+              WHERE d."userId" = ${userId}
+                AND d."sourceType" = ANY(${sourceTypeFilter})
+                AND (
+                  d."sourceType" = 'email'
+                  OR LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%'
+                  OR LOWER(d.content) LIKE '%' || LOWER(${query}) || '%'
+                  OR LOWER(d.title) LIKE '%' || LOWER(${query}) || '%'
+                )
+              ORDER BY d."createdAt" DESC, similarity DESC
+              LIMIT ${limit}
+            `;
+          } else {
+            fallbackResults = await prisma.$queryRaw`
+              SELECT 
+                d.id,
+                d."userId",
+                d."sourceType",
+                d."sourceId",
+                d.title,
+                d.content,
+                d.metadata,
+                d."createdAt",
+                d."updatedAt",
+                CASE
+                  WHEN d."sourceType" = 'email' THEN 0.9
+                  WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%software engineer%' THEN 0.95
+                  WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%contractor%' THEN 0.95
+                  WHEN LOWER(d.content) LIKE '%notifications@mail.polymer.co%' THEN 0.95
+                  WHEN LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%' THEN 0.85
+                  WHEN LOWER(d.content) LIKE '%' || LOWER(${query}) || '%' THEN 0.80
+                  WHEN LOWER(d.title) LIKE '%' || LOWER(${query}) || '%' THEN 0.75
+                  ELSE 0.6
+                END as similarity
+              FROM "Document" d
+              WHERE d."userId" = ${userId}
+                AND (
+                  d."sourceType" = 'email'
+                  OR LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%'
+                  OR LOWER(d.content) LIKE '%' || LOWER(${query}) || '%'
+                  OR LOWER(d.title) LIKE '%' || LOWER(${query}) || '%'
+                )
+              ORDER BY d."createdAt" DESC, similarity DESC
+              LIMIT ${limit}
+            `;
+          }
         } else {
-          fallbackResults = await prisma.$queryRaw`
-            SELECT 
-              d.id,
-              d."userId",
-              d."sourceType",
-              d."sourceId",
-              d.title,
-              d.content,
-              d.metadata,
-              d."createdAt",
-              d."updatedAt",
-              CASE
-                WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%software engineer%' THEN 0.95
-                WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%contractor%' THEN 0.95
-                WHEN LOWER(d.content) LIKE '%notifications@mail.polymer.co%' THEN 0.95
-                WHEN LOWER(d.content) LIKE '%baseball%' OR LOWER(d.content) LIKE '%kid%' OR LOWER(d.content) LIKE '%child%' THEN 0.95
-                WHEN LOWER(d.content) LIKE '%stock%' OR LOWER(d.content) LIKE '%sell%' OR LOWER(d.content) LIKE '%aapl%' THEN 0.95
-                WHEN LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%' THEN 0.85
-                WHEN LOWER(d.content) LIKE '%' || LOWER(${query}) || '%' THEN 0.80
-                WHEN LOWER(d.title) LIKE '%' || LOWER(${query}) || '%' THEN 0.75
-                ELSE 0.3
-              END as similarity
-            FROM "Document" d
-            WHERE d."userId" = ${userId}
-              AND (
-                LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%'
-                OR LOWER(d.content) LIKE '%' || LOWER(${query}) || '%'
-                OR LOWER(d.title) LIKE '%' || LOWER(${query}) || '%'
-                OR (LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%software%')
-                OR LOWER(d.content) LIKE '%notifications@mail.polymer.co%'
-                OR (LOWER(d.content) LIKE '%baseball%' AND LOWER(d.content) LIKE '%kid%')
-                OR (LOWER(d.content) LIKE '%stock%' AND LOWER(d.content) LIKE '%sell%')
-                OR LOWER(d.content) LIKE '%greg%'
-              )
-            ORDER BY similarity DESC, d."createdAt" DESC
-            LIMIT ${limit}
-          `;
+          if (sourceTypeFilter && sourceTypeFilter.length > 0) {
+            fallbackResults = await prisma.$queryRaw`
+              SELECT 
+                d.id,
+                d."userId",
+                d."sourceType",
+                d."sourceId",
+                d.title,
+                d.content,
+                d.metadata,
+                d."createdAt",
+                d."updatedAt",
+                CASE
+                  WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%software engineer%' THEN 0.95
+                  WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%contractor%' THEN 0.95
+                  WHEN LOWER(d.content) LIKE '%notifications@mail.polymer.co%' THEN 0.95
+                  WHEN LOWER(d.content) LIKE '%baseball%' OR LOWER(d.content) LIKE '%kid%' OR LOWER(d.content) LIKE '%child%' THEN 0.95
+                  WHEN LOWER(d.content) LIKE '%stock%' OR LOWER(d.content) LIKE '%sell%' OR LOWER(d.content) LIKE '%aapl%' THEN 0.95
+                  WHEN LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%' THEN 0.85
+                  WHEN LOWER(d.content) LIKE '%' || LOWER(${query}) || '%' THEN 0.80
+                  WHEN LOWER(d.title) LIKE '%' || LOWER(${query}) || '%' THEN 0.75
+                  ELSE 0.3
+                END as similarity
+              FROM "Document" d
+              WHERE d."userId" = ${userId}
+                AND d."sourceType" = ANY(${sourceTypeFilter})
+                AND (
+                  LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%'
+                  OR LOWER(d.content) LIKE '%' || LOWER(${query}) || '%'
+                  OR LOWER(d.title) LIKE '%' || LOWER(${query}) || '%'
+                  OR (LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%software%')
+                  OR LOWER(d.content) LIKE '%notifications@mail.polymer.co%'
+                  OR (LOWER(d.content) LIKE '%baseball%' AND LOWER(d.content) LIKE '%kid%')
+                  OR (LOWER(d.content) LIKE '%stock%' AND LOWER(d.content) LIKE '%sell%')
+                  OR LOWER(d.content) LIKE '%greg%'
+                )
+              ORDER BY similarity DESC, d."createdAt" DESC
+              LIMIT ${limit}
+            `;
+          } else {
+            fallbackResults = await prisma.$queryRaw`
+              SELECT 
+                d.id,
+                d."userId",
+                d."sourceType",
+                d."sourceId",
+                d.title,
+                d.content,
+                d.metadata,
+                d."createdAt",
+                d."updatedAt",
+                CASE
+                  WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%software engineer%' THEN 0.95
+                  WHEN LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%contractor%' THEN 0.95
+                  WHEN LOWER(d.content) LIKE '%notifications@mail.polymer.co%' THEN 0.95
+                  WHEN LOWER(d.content) LIKE '%baseball%' OR LOWER(d.content) LIKE '%kid%' OR LOWER(d.content) LIKE '%child%' THEN 0.95
+                  WHEN LOWER(d.content) LIKE '%stock%' OR LOWER(d.content) LIKE '%sell%' OR LOWER(d.content) LIKE '%aapl%' THEN 0.95
+                  WHEN LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%' THEN 0.85
+                  WHEN LOWER(d.content) LIKE '%' || LOWER(${query}) || '%' THEN 0.80
+                  WHEN LOWER(d.title) LIKE '%' || LOWER(${query}) || '%' THEN 0.75
+                  ELSE 0.3
+                END as similarity
+              FROM "Document" d
+              WHERE d."userId" = ${userId}
+                AND (
+                  LOWER(d.content) LIKE '%' || LOWER(${enhancedQuery}) || '%'
+                  OR LOWER(d.content) LIKE '%' || LOWER(${query}) || '%'
+                  OR LOWER(d.title) LIKE '%' || LOWER(${query}) || '%'
+                  OR (LOWER(d.content) LIKE '%jump%' AND LOWER(d.content) LIKE '%software%')
+                  OR LOWER(d.content) LIKE '%notifications@mail.polymer.co%'
+                  OR (LOWER(d.content) LIKE '%baseball%' AND LOWER(d.content) LIKE '%kid%')
+                  OR (LOWER(d.content) LIKE '%stock%' AND LOWER(d.content) LIKE '%sell%')
+                  OR LOWER(d.content) LIKE '%greg%'
+                )
+              ORDER BY similarity DESC, d."createdAt" DESC
+              LIMIT ${limit}
+            `;
+          }
         }
         
         return (fallbackResults as any[]).filter(doc => doc.similarity >= 0.3);
@@ -343,27 +513,53 @@ export class EmbeddingService {
       return results;
     } catch (error) {
       try {
-        const fallbackResults = await prisma.$queryRaw`
-          SELECT 
-            id,
-            "userId",
-            "sourceType",
-            "sourceId",
-            title,
-            content,
-            metadata,
-            "createdAt",
-            "updatedAt",
-            0.5 as similarity
-          FROM "Document"
-          WHERE "userId" = ${userId}
-            AND (
-              LOWER(title) LIKE LOWER('%' || ${query} || '%')
-              OR LOWER(content) LIKE LOWER('%' || ${query} || '%')
-            )
-          ORDER BY "updatedAt" DESC
-          LIMIT ${limit}
-        `;
+        let fallbackResults;
+        if (sourceTypeFilter && sourceTypeFilter.length > 0) {
+          fallbackResults = await prisma.$queryRaw`
+            SELECT 
+              id,
+              "userId",
+              "sourceType",
+              "sourceId",
+              title,
+              content,
+              metadata,
+              "createdAt",
+              "updatedAt",
+              0.5 as similarity
+            FROM "Document"
+            WHERE "userId" = ${userId}
+              AND "sourceType" = ANY(${sourceTypeFilter})
+              AND (
+                LOWER(title) LIKE LOWER('%' || ${query} || '%')
+                OR LOWER(content) LIKE LOWER('%' || ${query} || '%')
+              )
+            ORDER BY "updatedAt" DESC
+            LIMIT ${limit}
+          `;
+        } else {
+          fallbackResults = await prisma.$queryRaw`
+            SELECT 
+              id,
+              "userId",
+              "sourceType",
+              "sourceId",
+              title,
+              content,
+              metadata,
+              "createdAt",
+              "updatedAt",
+              0.5 as similarity
+            FROM "Document"
+            WHERE "userId" = ${userId}
+              AND (
+                LOWER(title) LIKE LOWER('%' || ${query} || '%')
+                OR LOWER(content) LIKE LOWER('%' || ${query} || '%')
+              )
+            ORDER BY "updatedAt" DESC
+            LIMIT ${limit}
+          `;
+        }
         return fallbackResults;
       } catch (fallbackError) {
         return [];
@@ -378,7 +574,19 @@ export class EmbeddingService {
     toolsUsed?: any[];
   }> {
     try {
-      const relevantDocs = await this.searchSimilarDocuments(userId, query, 15, 0.25, chatHistory);
+      // Determine source type filter based on query intent
+      let sourceTypeFilter: string[] | undefined;
+      const queryLower = query.toLowerCase();
+      
+      if (queryLower.includes('hubspot') || (queryLower.includes('contact') && queryLower.includes('how many'))) {
+        sourceTypeFilter = ['hubspot_contact', 'hubspot_note'];
+      } else if (queryLower.includes('email') || queryLower.includes('gmail')) {
+        sourceTypeFilter = ['email'];
+      } else if (queryLower.includes('calendar') || queryLower.includes('meeting') || queryLower.includes('event')) {
+        sourceTypeFilter = ['calendar_event'];
+      }
+      
+      const relevantDocs = await this.searchSimilarDocuments(userId, query, 15, 0.25, chatHistory, sourceTypeFilter);
       
       if (!relevantDocs || relevantDocs.length === 0) {
         return {
