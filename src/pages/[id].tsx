@@ -550,10 +550,10 @@ const ChatPage = () => {
                   {messages.map((message) => (
                     <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                       <div className={`flex flex-col space-y-2 ${message.role === 'user' ? 'items-end' : 'items-start max-w-[80%]'}`}>
-                        <div className={`rounded-lg px-4 py-2 ${
+                        <div className={`rounded-lg py-2 ${
                           message.role === 'user' 
-                            ? 'bg-[#f0f5f5] text-gray-900' 
-                            : 'text-gray-900 dark:text-gray-100'
+                            ? 'bg-[#f0f5f5] text-gray-900 px-4' 
+                            : 'text-gray-900 dark:text-gray-100 pl-0 pr-4'
                         }`}>
                           {message.isLoading ? (
                             <div className="flex items-center gap-2">
