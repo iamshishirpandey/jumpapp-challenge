@@ -186,16 +186,16 @@ model CalendarEvent {
 }
 
 model Document {
-  id            String    @id @default(cuid())
+  id            String                  @id @default(cuid())
   userId        String
-  sourceType    String    // 'email', 'hubspot_contact', 'hubspot_note', 'calendar_event', 'google_contact'
-  sourceId      String    // Original ID from source system
+  sourceType    String                  // 'email', 'hubspot_contact', 'hubspot_note', 'calendar_event', 'google_contact'
+  sourceId      String                  // Original ID from source system
   title         String?
-  content       String    @db.Text
+  content       String                  @db.Text
   metadata      Json?
-  embedding     String?   // Vector embedding as string (will be converted to vector type in DB)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  embedding     Unsupported("vector")?  // Vector embedding for similarity search
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
   
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   

@@ -155,6 +155,8 @@ const ChatPage = () => {
 
   const sendMessage = async (content: string) => {
     if (!content.trim()) return
+    
+    console.log('SendMessage called with:', { content, id, currentChat: currentChat?.id })
 
     let chatId = id as string
     
@@ -171,17 +173,19 @@ const ChatPage = () => {
         const newChat = await response.json()
         if (response.ok) {
           chatId = newChat.id
+          console.log('Chat created successfully:', newChat.id)
           setCurrentChat(newChat)
           setChats(prevChats => [newChat, ...prevChats])
           setSkipLoadMessages(true)
           
-    
-          router.replace(`/${newChat.id}`, undefined, { shallow: true })
+          // Update URL without causing re-render issues
+          window.history.replaceState(null, '', `/${newChat.id}`)
         } else {
           setIsCreatingChat(false)
           return
         }
       } catch (error) {
+        console.error('Error creating chat:', error)
         setIsCreatingChat(false)
         return
       }
@@ -205,6 +209,7 @@ const ChatPage = () => {
     setMessages(prev => [...prev, userMessage, loadingMessage])
 
     try {
+      console.log('Calling search API with chatId:', chatId)
       const response = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -428,13 +433,24 @@ const ChatPage = () => {
                       className="flex h-14 w-full rounded-full border border-input bg-background px-6 py-3 text-sm shadow-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 pr-12"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                          e.preventDefault()
                           const content = e.currentTarget.value
                           e.currentTarget.value = ''
                           sendMessage(content)
                         }
                       }}
                     />
-                    <button className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                    <button 
+                      onClick={(e) => {
+                        const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement
+                        if (input && input.value.trim()) {
+                          const content = input.value
+                          input.value = ''
+                          sendMessage(content)
+                        }
+                      }}
+                      className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
                       <Send className="h-4 w-4" />
                     </button>
                   </div>
@@ -674,13 +690,24 @@ const ChatPage = () => {
                       className="flex h-14 w-full rounded-full border border-input bg-background px-6 py-3 text-sm shadow-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 pr-12"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                          e.preventDefault()
                           const content = e.currentTarget.value
                           e.currentTarget.value = ''
                           sendMessage(content)
                         }
                       }}
                     />
-                    <button className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                    <button 
+                      onClick={(e) => {
+                        const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement
+                        if (input && input.value.trim()) {
+                          const content = input.value
+                          input.value = ''
+                          sendMessage(content)
+                        }
+                      }}
+                      className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
                       <Send className="h-4 w-4" />
                     </button>
                   </div>

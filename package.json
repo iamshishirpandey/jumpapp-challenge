@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:setup": "npm run db:reset && npm run db:configure",
+    "db:reset": "npx prisma migrate reset --force",
+    "db:configure": "psql $DATABASE_URL -c \"CREATE EXTENSION IF NOT EXISTS vector;\" && npx prisma db push && npm run db:fix-embeddings",
+    "db:fix-embeddings": "echo \"DO \\$\\$ BEGIN IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'Document') THEN ALTER TABLE \\\"Document\\\" DROP COLUMN IF EXISTS embedding; ALTER TABLE \\\"Document\\\" ADD COLUMN embedding vector(768); END IF; END \\$\\$;\" | psql $DATABASE_URL"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.0",
