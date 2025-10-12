@@ -241,17 +241,40 @@ const ChatPage = () => {
     setMessages(prev => [...prev, userMessage, loadingMessage])
 
     try {
-      const response = await fetch('/api/chat', {
+      // Determine if this requires tool calling (sending emails, creating events, etc.)
+      const toolActionPatterns = [
+        /\b(send|email|mail)\b.*\b(to|@)\b/i, // Send email patterns
+        /\b(reply|respond)\b.*\b(email|message)\b/i, // Reply patterns
+        /\b(create|schedule|make|add)\b.*\b(meeting|event|appointment|calendar)\b/i, // Calendar patterns
+        /\b(create|add|new)\b.*\b(contact|person)\b/i, // Contact patterns
+        /\b(create|add|make)\b.*\b(task|todo|reminder)\b/i, // Task patterns
+        /\b(write|compose|draft)\b.*\b(email|message)\b/i, // Email composition
+      ]
+      
+      const isToolAction = toolActionPatterns.some(pattern => pattern.test(content.toLowerCase()))
+      
+      // Use chat API for tool actions, search API for information queries
+      const apiEndpoint = isToolAction ? '/api/chat' : '/api/search'
+      console.log(`Using ${apiEndpoint} for query: "${content}" (isToolAction: ${isToolAction})`)
+      
+      const requestBody = isToolAction ? {
+        message: content,
+        chatId: chatId,
+        conversationHistory: messages.filter(m => !m.isLoading).map(m => ({
+          role: m.role === 'assistant' ? 'model' : m.role,
+          parts: [{ text: m.content }]
+        }))
+      } : {
+        query: content,
+        chatId: chatId,
+        limit: 10,
+        threshold: 0.3
+      }
+
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          message: content,
-          chatId: chatId,
-          conversationHistory: messages.filter(m => !m.isLoading).map(m => ({
-            role: m.role === 'assistant' ? 'model' : m.role,
-            parts: [{ text: m.content }]
-          }))
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       const data = await response.json()
@@ -265,7 +288,7 @@ const ChatPage = () => {
         content: data.response || (data.resultsCount > 0 ? `Found ${data.resultsCount} relevant results for your query.` : 'No results found.'),
         role: 'assistant',
         createdAt: new Date(),
-        sources: data.sources || [],
+        sources: isToolAction ? (data.sources || []) : (data.results || []), // Chat API uses sources, Search API uses results
         emailCards: data.emailCards || [],
         toolsUsed: data.toolsUsed || []
       }

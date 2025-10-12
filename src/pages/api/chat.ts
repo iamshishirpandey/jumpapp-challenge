@@ -153,7 +153,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       let response;
       try {
+        console.log('🤖 Calling LLM with messages:', messages.length);
         response = await llmService.generateResponse(messages, user.id, ragResult.sources);
+        console.log('🤖 LLM response:', { needsToolExecution: response.needsToolExecution, toolCallsCount: response.toolCalls?.length || 0 });
       } catch (llmError: any) {
         console.error('LLM error, falling back to RAG only:', llmError.message);
         // Fallback to RAG-only response if LLM fails
@@ -166,11 +168,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       if (response.needsToolExecution && response.toolCalls) {
+        console.log('🔧 Executing tools:', response.toolCalls.map(tc => ({ name: tc.name, id: tc.id })));
         const toolResults = await Promise.allSettled(
-          response.toolCalls.map(toolCall => 
-            toolRegistry.executeTool(toolCall, user.id)
-          )
+          response.toolCalls.map(toolCall => {
+            console.log(`🔧 Executing tool: ${toolCall.name} with params:`, toolCall.parameters);
+            return toolRegistry.executeTool(toolCall, user.id);
+          })
         );
+        console.log('🔧 Tool results:', toolResults.map((r, i) => ({ 
+          index: i, 
+          status: r.status, 
+          success: r.status === 'fulfilled' ? r.value?.success : false,
+          error: r.status === 'rejected' ? r.reason?.message : undefined
+        })));
 
         const processedResults = toolResults.map((result, index) => {
           if (result.status === 'fulfilled') {

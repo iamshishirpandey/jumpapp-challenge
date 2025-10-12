@@ -48,7 +48,7 @@ export class LLMService {
       }))
 
       const model = genAI.getGenerativeModel({ 
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-pro',
         tools: tools as any
       })
 
@@ -120,7 +120,7 @@ export class LLMService {
       }))
 
       const model = genAI.getGenerativeModel({ 
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-pro',
         tools: tools as any
       })
 

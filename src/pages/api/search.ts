@@ -198,6 +198,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return {
           ...doc,
           sourceData,
+          preview: doc.content ? doc.content.substring(0, 200) : '', // Add preview field for cards
+          title: doc.title || (sourceData?.subject || sourceData?.summary || ''), // Ensure title
+          // Add metadata for proper card display
+          ...(doc.sourceType === 'email' && sourceData ? {
+            metadata: {
+              from: sourceData.from,
+              date: sourceData.internalDate,
+              subject: sourceData.subject
+            },
+            gmailId: doc.sourceId
+          } : {}),
+          ...(doc.sourceType === 'calendar_event' && sourceData ? {
+            metadata: {
+              startDateTime: sourceData.startDateTime,
+              endDateTime: sourceData.endDateTime,
+              location: sourceData.location,
+              attendees: sourceData.attendees
+            }
+          } : {}),
+          ...(doc.sourceType === 'hubspot_contact' && sourceData ? {
+            metadata: {
+              email: sourceData.email,
+              company: sourceData.company,
+              jobtitle: sourceData.jobtitle
+            }
+          } : {})
         };
       })
     );
