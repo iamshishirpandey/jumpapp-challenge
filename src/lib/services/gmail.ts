@@ -46,6 +46,33 @@ export class GmailService {
     }
   }
 
+  async fetchAllEmails(userId: string, maxResults: number = 100) {
+    try {
+      const queries = [
+        'newer_than:3d',
+        'in:sent newer_than:3d'
+      ];
+
+      const allEmails = [];
+
+      for (const query of queries) {
+        try {
+          console.log(`Fetching emails with query: ${query}`);
+          const emails = await this.fetchEmails(userId, query, maxResults / 2);
+          allEmails.push(...emails);
+          console.log(`Successfully fetched ${emails.length} emails for query: ${query}`);
+        } catch (queryError) {
+          console.error(`Error with query "${query}":`, (queryError as Error).message);
+        }
+      }
+
+      return allEmails;
+    } catch (error) {
+      console.error('Error fetching all emails:', error);
+      throw error;
+    }
+  }
+
   async getEmailDetails(messageId: string) {
     try {
       const response = await gmail.users.messages.get({

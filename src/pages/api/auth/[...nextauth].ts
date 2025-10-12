@@ -1,19 +1,21 @@
 import NextAuth from 'next-auth'
 import GoogleProvider from 'next-auth/providers/google'
 import { NextAuthOptions } from 'next-auth'
+import { PrismaAdapter } from "@auth/prisma-adapter"
 import { prisma } from '@/lib/prisma'
 import { GmailService } from '@/lib/services/gmail'
 import { CalendarService } from '@/lib/services/calendar'
 import { EmbeddingService } from '@/lib/services/embeddings'
 
 export const authOptions: NextAuthOptions = {
+  // adapter: PrismaAdapter(prisma), // Temporarily disabled
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: 'openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.modify',
+          scope: 'openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.metadata',
           access_type: 'offline',
           prompt: 'consent',
         }
@@ -47,16 +49,14 @@ export const authOptions: NextAuthOptions = {
       }
       return session
     },
-    async signIn({ user, account, profile }) {
+    async signIn({ user, account }) {
       try {
-        // Ensure user exists in database and save refresh tokens
         if (user.email) {
           const updateData: any = {
             name: user.name || null,
             image: user.image || null,
           };
           
-          // Save Google refresh token if available
           if (account?.provider === 'google' && account.refresh_token) {
             updateData.googleRefreshToken = account.refresh_token;
             updateData.googleConnected = true;
@@ -75,33 +75,67 @@ export const authOptions: NextAuthOptions = {
               googleConnectedAt: account?.provider === 'google' ? new Date() : null,
             },
           })
+
+          if (account?.provider === 'google') {
+            await prisma.account.upsert({
+              where: {
+                provider_providerAccountId: {
+                  provider: 'google',
+                  providerAccountId: account.providerAccountId
+                }
+              },
+              update: {
+                access_token: account.access_token,
+                refresh_token: account.refresh_token,
+                expires_at: account.expires_at,
+                token_type: account.token_type,
+                scope: account.scope,
+                id_token: account.id_token,
+              },
+              create: {
+                userId: updatedUser.id,
+                type: account.type,
+                provider: account.provider,
+                providerAccountId: account.providerAccountId,
+                access_token: account.access_token,
+                refresh_token: account.refresh_token,
+                expires_at: account.expires_at,
+                token_type: account.token_type,
+                scope: account.scope,
+                id_token: account.id_token,
+              }
+            })
+          }
           
           if (account?.provider === 'google' && account.refresh_token) {
-            try {
-              const embeddingService = new EmbeddingService()
-              
+            setImmediate(async () => {
               try {
-                const gmailService = new GmailService(account.refresh_token)
-                const emails = await gmailService.fetchEmails(updatedUser.id, 'newer_than:7d', 50)
+                const embeddingService = new EmbeddingService()
                 
-                await Promise.allSettled(
-                  emails.map(email => embeddingService.processEmailForRAG(updatedUser.id, email))
-                )
-              } catch (gmailError) {}
-              
-              try {
-                const calendarService = new CalendarService(account.refresh_token)
-                const events = await calendarService.fetchEvents(updatedUser.id)
+                try {
+                  const gmailService = new GmailService(account.refresh_token!)
+                  const emails = await gmailService.fetchEmails(updatedUser.id, 'newer_than:7d', 50)
+                  
+                  await Promise.allSettled(
+                    emails.map(email => embeddingService.processEmailForRAG(updatedUser.id, email))
+                  )
+                } catch (gmailError) {}
                 
-                await Promise.allSettled(
-                  events.map(event => embeddingService.processEventForRAG(updatedUser.id, event))
-                )
-              } catch (calendarError) {}
-            } catch (syncError) {}
+                try {
+                  const calendarService = new CalendarService(account.refresh_token!)
+                  const events = await calendarService.fetchEvents(updatedUser.id)
+                  
+                  await Promise.allSettled(
+                    events.map(event => embeddingService.processEventForRAG(updatedUser.id, event))
+                  )
+                } catch (calendarError) {}
+              } catch (syncError) {}
+            })
           }
         }
         return true
       } catch (error) {
+        console.error('Sign in error:', error)
         return false
       }
     },

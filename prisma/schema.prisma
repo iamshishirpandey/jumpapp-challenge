@@ -1,5 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
@@ -49,13 +47,11 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   
-  // HubSpot integration fields
   hubspotConnected      Boolean   @default(false)
   hubspotRefreshToken   String?   @db.Text
   hubspotPortalId       String?
   hubspotConnectedAt    DateTime?
   
-  // Google integration fields
   googleConnected       Boolean   @default(false)
   googleRefreshToken    String?   @db.Text
   googleConnectedAt     DateTime?
@@ -71,6 +67,9 @@ model User {
   agentTasks      AgentTask[]
   agentMemory     AgentMemory[]
   agentWorkflows  AgentWorkflow[]
+  tasks           Task[]
+  ongoingInstructions OngoingInstruction[]
+  integrations    Integration[]
 }
 
 model VerificationToken {
@@ -188,12 +187,12 @@ model CalendarEvent {
 model Document {
   id            String                  @id @default(cuid())
   userId        String
-  sourceType    String                  // 'email', 'hubspot_contact', 'hubspot_note', 'calendar_event', 'google_contact'
-  sourceId      String                  // Original ID from source system
+  sourceType    String
+  sourceId      String
   title         String?
   content       String                  @db.Text
   metadata      Json?
-  embedding     Unsupported("vector")?  // Vector embedding for similarity search
+  embedding     Unsupported("vector")?
   createdAt     DateTime                @default(now())
   updatedAt     DateTime                @updatedAt
   
@@ -220,7 +219,7 @@ model Chat {
 model Message {
   id        String   @id @default(cuid())
   chatId    String
-  role      String   // 'user' or 'assistant'
+  role      String
   content   String   @db.Text
   createdAt DateTime @default(now())
   
@@ -232,17 +231,17 @@ model Message {
 model AgentTask {
   id            String    @id @default(cuid())
   userId        String
-  type          String    // 'schedule_appointment', 'send_email', 'search_contacts', etc.
-  status        String    @default("pending") // 'pending', 'in_progress', 'completed', 'failed', 'waiting'
+  type          String
+  status        String    @default("pending")
   priority      Int       @default(0)
-  data          Json      // Task-specific data
-  context       Json?     // Additional context and metadata
-  result        Json?     // Task execution result
-  error         String?   // Error message if failed
-  parentTaskId  String?   // For subtasks
+  data          Json
+  context       Json?
+  result        Json?
+  error         String?
+  parentTaskId  String?
   retryCount    Int       @default(0)
   maxRetries    Int       @default(3)
-  scheduledFor  DateTime? // When to execute the task
+  scheduledFor  DateTime?
   completedAt   DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -306,5 +305,58 @@ model AgentWorkflow {
   
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   
+  @@index([userId, isActive])
+}
+
+model Task {
+  id          String    @id @default(cuid())
+  userId      String
+  title       String
+  description String    @db.Text
+  status      String    @default("PENDING")
+  priority    String    @default("medium")
+  dueDate     DateTime?
+  assignedTo  String?
+  relatedTo   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, status])
+  @@index([dueDate])
+}
+
+model OngoingInstruction {
+  id            String   @id @default(cuid())
+  userId        String
+  instruction   String   @db.Text
+  triggerEvents String[]
+  priority      Int      @default(5)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, active])
+}
+
+model Integration {
+  id           String    @id @default(cuid())
+  userId       String
+  type         String
+  accessToken  String?   @db.Text
+  refreshToken String?   @db.Text
+  portalId     String?
+  isActive     Boolean   @default(true)
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, type])
   @@index([userId, isActive])
 }

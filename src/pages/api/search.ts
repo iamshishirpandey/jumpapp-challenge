@@ -239,6 +239,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             resultsCount: enrichedResults.length,
             response: aiResponse,
             sources: ragResponse.sources,
+            toolsUsed: ragResponse.toolsUsed,
             chatId,
           });
         }

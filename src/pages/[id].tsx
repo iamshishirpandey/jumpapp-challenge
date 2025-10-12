@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { signOut } from 'next-auth/react'
 import { useRouter } from 'next/router'
-import { User, Send, SquarePen, LogOut, ChevronUp, X, Paperclip, ThumbsUp, ThumbsDown, Share, MoreHorizontal, Settings, Loader2, ExternalLink, Mail, Calendar, Users, FileText, Plus } from 'lucide-react'
+import { User, Send, SquarePen, LogOut, ChevronUp, X, Settings, Loader2, ExternalLink, Mail, Calendar, Users, FileText, Plus } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useHubSpot } from '@/hooks/useHubSpot'
 import {
@@ -27,7 +27,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { SettingsDialog } from '@/components/SettingsDialog'
 
 const SidebarHeaderContent = () => {
@@ -201,7 +200,6 @@ const ChatPage = () => {
           setChats(prevChats => [newChat, ...prevChats])
           setSkipLoadMessages(true)
           
-          // Update URL without causing re-render issues
           window.history.replaceState(null, '', `/${newChat.id}`)
         } else {
           setIsCreatingChat(false)

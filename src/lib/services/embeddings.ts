@@ -1,5 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { prisma } from '@/lib/prisma';
+import { toolRegistry } from '@/lib/tools/registry';
+import { ensureToolsSetup } from '@/lib/tools/setup';
 
 export class EmbeddingService {
   private genAI: GoogleGenerativeAI;
@@ -9,6 +11,7 @@ export class EmbeddingService {
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY;
     this.genAI = new GoogleGenerativeAI(apiKey || 'dummy-key');
+    ensureToolsSetup();
     this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
     this.embeddingModel = this.genAI.getGenerativeModel({ model: 'text-embedding-004' });
   }
@@ -164,7 +167,6 @@ export class EmbeddingService {
         const enhancedEmbeddingString = `[${enhancedEmbedding.join(',')}]`;
         
         if (isVectorLatestQuery) {
-          // For latest queries, prioritize by date in vector search too
           results = await prisma.$queryRaw`
             SELECT 
               id,
@@ -373,6 +375,7 @@ export class EmbeddingService {
     response: string;
     sources: any[];
     relevantDocuments: any[];
+    toolsUsed?: any[];
   }> {
     try {
       const relevantDocs = await this.searchSimilarDocuments(userId, query, 15, 0.25, chatHistory);
@@ -404,7 +407,46 @@ export class EmbeddingService {
       
       const contextDocs = highQualityDocs.length > 0 ? highQualityDocs : (relevantDocs as any[]);
       
-      const context = contextDocs.map((doc, index) => {
+      const nonDeliveryFailures = contextDocs.filter(doc => 
+        !doc.title?.toLowerCase().includes('delivery status notification') &&
+        !doc.title?.toLowerCase().includes('delivery failure') &&
+        !doc.content?.toLowerCase().includes('mailer-daemon')
+      );
+      
+      const sourceDocs = nonDeliveryFailures.length > 0 ? nonDeliveryFailures : contextDocs;
+      
+      const sources = await Promise.all(
+        sourceDocs
+          .filter(doc => doc.similarity >= 0.7)
+          .map(async (doc) => {
+            const metadata = doc.metadata || {};
+            let gmailId = null;
+            
+            if (doc.sourceType === 'email') {
+              try {
+                const emailRecord = await prisma.email.findUnique({
+                  where: { id: doc.sourceId },
+                  select: { gmailId: true }
+                });
+                gmailId = emailRecord?.gmailId;
+              } catch (error) {
+              }
+            }
+            
+            return {
+              id: doc.id,
+              sourceType: doc.sourceType,
+              title: doc.title,
+              similarity: doc.similarity,
+              metadata,
+              preview: doc.content.substring(0, 200) + '...',
+              sourceId: doc.sourceId,
+              gmailId
+            };
+          })
+      );
+      
+      const context = sourceDocs.map((doc, index) => {
         const metadata = doc.metadata || {};
         let sourceInfo = '';
         
@@ -441,7 +483,6 @@ export class EmbeddingService {
           ).join('\n') + '\n';
       }
 
-      // Get current date and time for temporal context
       const now = new Date();
       const currentDateTime = now.toLocaleString('en-US', {
         weekday: 'long',
@@ -480,39 +521,85 @@ Instructions:
 
 Answer:`;
 
+      const actionPatterns = [
+        /schedule|meeting|appointment|calendar/i,
+        /send|email|message|reply/i,
+        /create|add|new.*contact/i,
+        /search.*contact|find.*contact|lookup.*contact/i,
+        /save.*instruction|remember.*instruction|ongoing.*instruction/i,
+        /task|todo|remind/i
+      ];
+      
+      const needsTools = actionPatterns.some(pattern => pattern.test(query));
+      
+      if (needsTools) {
+        const tools = toolRegistry.getToolDefinitions().map(tool => ({
+          functionDeclarations: [{
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.parameters
+          }]
+        }));
+
+        const modelWithTools = this.genAI.getGenerativeModel({ 
+          model: 'gemini-2.0-flash',
+          tools: tools.length > 0 ? tools as any : undefined
+        });
+
+        const result = await modelWithTools.generateContent(prompt);
+        const response = result.response;
+        
+        const functionCalls = response.functionCalls();
+        
+        if (functionCalls && functionCalls.length > 0) {
+          const toolResults = await Promise.allSettled(
+            functionCalls.map(fc => 
+              toolRegistry.executeTool({
+                id: `call_${Date.now()}_${Math.random()}`,
+                name: fc.name,
+                parameters: fc.args
+              }, userId)
+            )
+          );
+
+          const processedResults = toolResults.map((result) => {
+            if (result.status === 'fulfilled') {
+              return result.value;
+            } else {
+              return {
+                success: false,
+                error: result.reason?.message || 'Unknown error'
+              };
+            }
+          });
+
+          const followUpPrompt = `${prompt}
+
+Tool execution results:
+${processedResults.map((result, index) => 
+  `${functionCalls[index].name}: ${result.success ? 'Success' : 'Failed'} - ${JSON.stringify(result)}`
+).join('\n')}
+
+Please provide a natural response summarizing what was accomplished:`;
+
+          const followUpResult = await this.model.generateContent(followUpPrompt);
+          const followUpResponse = await followUpResult.response;
+          
+          return {
+            response: followUpResponse.text(),
+            sources,
+            relevantDocuments: relevantDocs,
+            toolsUsed: functionCalls.map((fc, fcIndex) => ({
+              name: fc.name,
+              parameters: fc.args,
+              result: processedResults[fcIndex]
+            }))
+          };
+        }
+      }
+
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
-      
-      const sources = await Promise.all(
-        contextDocs
-          .filter(doc => doc.similarity >= 0.7)
-          .map(async (doc) => {
-            const metadata = doc.metadata || {};
-            let gmailId = null;
-            
-            if (doc.sourceType === 'email') {
-              try {
-                const emailRecord = await prisma.email.findUnique({
-                  where: { id: doc.sourceId },
-                  select: { gmailId: true }
-                });
-                gmailId = emailRecord?.gmailId;
-              } catch (error) {
-              }
-            }
-            
-            return {
-              id: doc.id,
-              sourceType: doc.sourceType,
-              title: doc.title,
-              similarity: doc.similarity,
-              metadata,
-              preview: doc.content.substring(0, 200) + '...',
-              sourceId: doc.sourceId,
-              gmailId
-            };
-          })
-      );
 
       return {
         response: response.text(),
