@@ -173,6 +173,48 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     }
   },
   {
+    name: 'update_hubspot_contact',
+    description: 'Update an existing contact in HubSpot',
+    parameters: {
+      type: 'object',
+      properties: {
+        contactId: {
+          type: 'string',
+          description: 'HubSpot contact ID'
+        },
+        email: {
+          type: 'string',
+          description: 'Email address of the contact'
+        },
+        firstName: {
+          type: 'string',
+          description: 'First name of the contact'
+        },
+        lastName: {
+          type: 'string',
+          description: 'Last name of the contact'
+        },
+        company: {
+          type: 'string',
+          description: 'Company name (optional)'
+        },
+        phone: {
+          type: 'string',
+          description: 'Phone number (optional)'
+        },
+        jobTitle: {
+          type: 'string',
+          description: 'Job title (optional)'
+        },
+        website: {
+          type: 'string',
+          description: 'Website URL (optional)'
+        }
+      },
+      required: ['contactId']
+    }
+  },
+  {
     name: 'create_hubspot_note',
     description: 'Create a note for a HubSpot contact',
     parameters: {

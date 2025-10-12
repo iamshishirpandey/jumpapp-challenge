@@ -1,21 +1,83 @@
 import { prisma } from '@/lib/prisma'
 
 async function getHubSpotClient(userId: string) {
-  const integration = await prisma.integration.findFirst({
-    where: {
-      userId,
-      type: 'HUBSPOT',
-      isActive: true
+  console.log('🔧 Getting HubSpot client for userId:', userId)
+  
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { 
+      hubspotConnected: true, 
+      hubspotRefreshToken: true, 
+      hubspotPortalId: true 
     }
   })
 
-  if (!integration?.accessToken) {
-    throw new Error('HubSpot integration not found or access token missing')
+  console.log('🔧 User HubSpot status:', {
+    found: !!user,
+    hubspotConnected: user?.hubspotConnected,
+    hasRefreshToken: !!user?.hubspotRefreshToken,
+    refreshTokenLength: user?.hubspotRefreshToken?.length,
+    portalId: user?.hubspotPortalId
+  })
+
+  if (!user?.hubspotConnected || !user.hubspotRefreshToken) {
+    throw new Error('HubSpot integration not found or access token missing. Please connect your HubSpot account first using the Connect HubSpot button in Settings.')
   }
 
+  // Get fresh access token using refresh token
+  console.log('🔧 Refreshing HubSpot access token...')
+  const accessToken = await refreshHubSpotToken(userId, user.hubspotRefreshToken)
+
   return {
-    accessToken: integration.accessToken,
-    portalId: integration.portalId
+    accessToken,
+    portalId: user.hubspotPortalId
+  }
+}
+
+async function refreshHubSpotToken(userId: string, refreshToken: string): Promise<string> {
+  try {
+    console.log('🔧 Refreshing HubSpot token for userId:', userId, 'refreshToken length:', refreshToken.length)
+    
+    const response = await fetch('https://api.hubapi.com/oauth/v1/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: process.env.HUBSPOT_CLIENT_ID!,
+        client_secret: process.env.HUBSPOT_CLIENT_SECRET!,
+        refresh_token: refreshToken,
+      }),
+    })
+
+    console.log('🔧 HubSpot token refresh response status:', response.status)
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('🔧 HubSpot token refresh failed:', errorText)
+      throw new Error(`Failed to refresh HubSpot token: ${response.status} - ${errorText}`)
+    }
+
+    const tokenData = await response.json()
+    console.log('🔧 HubSpot token refresh successful, access token length:', tokenData.access_token?.length)
+
+    // Update the user with new refresh token if provided
+    if (tokenData.refresh_token) {
+      console.log('🔧 Updating user with new refresh token')
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          hubspotRefreshToken: tokenData.refresh_token,
+          updatedAt: new Date()
+        }
+      })
+    }
+
+    return tokenData.access_token
+  } catch (error) {
+    console.error('🔧 Error refreshing HubSpot token:', error)
+    throw error
   }
 }
 
@@ -37,11 +99,56 @@ async function hubspotRequest(endpoint: string, options: RequestInit, accessToke
   return response.json()
 }
 
+export async function updateHubSpotContact(parameters: Record<string, any>, userId: string) {
+  const { contactId, email, firstName, lastName, company, phone, jobTitle, website } = parameters
+  
+  try {
+    console.log('🔧 Updating HubSpot contact:', contactId)
+    
+    const { accessToken } = await getHubSpotClient(userId)
+    
+    const contactData = {
+      properties: {
+        ...(email && { email }),
+        ...(firstName && { firstname: firstName }),
+        ...(lastName && { lastname: lastName }),
+        ...(company && { company }),
+        ...(phone && { phone }),
+        ...(jobTitle && { jobtitle: jobTitle }),
+        ...(website && { website })
+      }
+    }
+
+    const result = await hubspotRequest(
+      `/crm/v3/objects/contacts/${contactId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(contactData)
+      },
+      accessToken
+    )
+
+    return {
+      contactId: result.id,
+      success: true,
+      message: `Contact updated successfully`,
+      properties: result.properties
+    }
+  } catch (error) {
+    console.error('🔧 HubSpot contact update error:', error)
+    throw new Error(`Failed to update HubSpot contact: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
 export async function createHubSpotContact(parameters: Record<string, any>, userId: string) {
   const { email, firstName, lastName, company, phone, jobTitle, website } = parameters
   
   try {
+    console.log('🔧 Creating HubSpot contact for userId:', userId)
+    console.log('🔧 Contact parameters:', { email, firstName, lastName, company, phone, jobTitle, website })
+    
     const { accessToken } = await getHubSpotClient(userId)
+    console.log('🔧 Got HubSpot access token, length:', accessToken?.length)
     
     const contactData = {
       properties: {
@@ -55,22 +162,44 @@ export async function createHubSpotContact(parameters: Record<string, any>, user
       }
     }
 
-    const result = await hubspotRequest(
-      '/crm/v3/objects/contacts',
-      {
-        method: 'POST',
-        body: JSON.stringify(contactData)
-      },
-      accessToken
-    )
+    console.log('🔧 Sending HubSpot contact data:', contactData)
+    
+    try {
+      const result = await hubspotRequest(
+        '/crm/v3/objects/contacts',
+        {
+          method: 'POST',
+          body: JSON.stringify(contactData)
+        },
+        accessToken
+      )
 
-    return {
-      contactId: result.id,
-      success: true,
-      message: `Contact created successfully for ${email}`,
-      properties: result.properties
+      console.log('🔧 HubSpot contact created successfully:', result.id)
+      return {
+        contactId: result.id,
+        success: true,
+        message: `Contact created successfully for ${email}`,
+        properties: result.properties
+      }
+    } catch (hubspotError: any) {
+      // Handle "Contact already exists" case
+      if (hubspotError.message?.includes('409') && hubspotError.message?.includes('Contact already exists')) {
+        const existingIdMatch = hubspotError.message.match(/Existing ID: (\d+)/)
+        const existingId = existingIdMatch ? existingIdMatch[1] : 'unknown'
+        
+        console.log('🔧 Contact already exists with ID:', existingId)
+        return {
+          contactId: existingId,
+          success: true,
+          message: `Contact ${email} already exists in HubSpot (ID: ${existingId})`,
+          alreadyExists: true
+        }
+      }
+      // Re-throw other errors
+      throw hubspotError
     }
   } catch (error) {
+    console.error('🔧 HubSpot contact creation error:', error)
     throw new Error(`Failed to create HubSpot contact: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }

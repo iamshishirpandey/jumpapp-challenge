@@ -16,6 +16,7 @@ import {
 
 import { 
   createHubSpotContact, 
+  updateHubSpotContact,
   createHubSpotNote, 
   searchHubSpotContacts 
 } from './implementations/hubspot-tools'
@@ -37,6 +38,7 @@ export function setupTools() {
   toolRegistry.registerTool('update_calendar_event', updateCalendarEvent)
   
   toolRegistry.registerTool('create_hubspot_contact', createHubSpotContact)
+  toolRegistry.registerTool('update_hubspot_contact', updateHubSpotContact)
   toolRegistry.registerTool('create_hubspot_note', createHubSpotNote)
   toolRegistry.registerTool('search_hubspot_contacts', searchHubSpotContacts)
   
