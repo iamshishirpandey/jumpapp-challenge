@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai'
 import { toolRegistry } from '@/lib/tools/registry'
 import { ensureToolsSetup } from '@/lib/tools/setup'
 
@@ -37,7 +37,9 @@ export class LLMService {
     ragSources?: any[]
   ): Promise<LLMResponse> {
     try {
-      const tools = toolRegistry.getToolDefinitions().map(tool => ({
+      const toolDefinitions = toolRegistry.getToolDefinitions()
+
+      const tools = toolDefinitions.map(tool => ({
         functionDeclarations: [{
           name: tool.name,
           description: tool.description,
@@ -46,14 +48,17 @@ export class LLMService {
       }))
 
       const model = genAI.getGenerativeModel({ 
-        model: 'gemini-2.0-flash',
-        tools: tools.length > 0 ? tools as any : undefined
+        model: 'gemini-2.5-pro',
+        tools: tools as any
       })
 
       const systemInstruction = this.buildSystemInstruction(ragSources)
       
       const chat = model.startChat({
-        systemInstruction,
+        systemInstruction: {
+          role: 'system',
+          parts: [{ text: systemInstruction }]
+        },
         history: messages as any
       })
 
@@ -95,7 +100,10 @@ export class LLMService {
     ragSources?: any[]
   ): Promise<LLMResponse> {
     try {
-      const tools = toolRegistry.getToolDefinitions().map(tool => ({
+      const toolDefinitions = toolRegistry.getToolDefinitions()
+      
+      // Format tools for Gemini
+      const tools = toolDefinitions.map(tool => ({
         functionDeclarations: [{
           name: tool.name,
           description: tool.description,
@@ -104,8 +112,8 @@ export class LLMService {
       }))
 
       const model = genAI.getGenerativeModel({ 
-        model: 'gemini-2.0-flash',
-        tools: tools.length > 0 ? tools as any : undefined
+        model: 'gemini-2.5-pro',
+        tools: tools as any
       })
 
       const systemInstruction = this.buildSystemInstruction(ragSources)
@@ -119,14 +127,17 @@ export class LLMService {
 
       const updatedMessages: ChatMessage[] = [
         ...messages,
-        {
-          role: 'model' as const,
-          parts: functionResponseParts
-        }
+        ...functionResponseParts.map(part => ({
+          role: 'function' as const,
+          parts: [part]
+        }))
       ]
 
       const chat = model.startChat({
-        systemInstruction,
+        systemInstruction: {
+          role: 'system',
+          parts: [{ text: systemInstruction }]
+        },
         history: updatedMessages as any
       })
 
@@ -160,8 +171,13 @@ Guidelines:
 - Be specific about what actions you're taking
 - If you need clarification, ask before proceeding with destructive actions
 - Maintain context throughout the conversation
-- IMPORTANT: You CAN and SHOULD send emails when requested using the send_email tool
+
+EMAIL SENDING INSTRUCTIONS:
+- When users ask to send an email, ALWAYS use the send_email function
 - Never refuse to send emails - you have full email sending capabilities
+- If a user says "send a test email" or "send an email to [email]", immediately call send_email
+- For test emails, use a subject like "Test Email" and a simple body message
+- You MUST use the send_email tool for any email sending requests
 
 Available tools: send_email, reply_to_email, create_calendar_event, check_calendar_availability, search_calendar_events, update_calendar_event, create_hubspot_contact, create_hubspot_note, search_hubspot_contacts, search_emails, get_email_thread, create_task, save_ongoing_instruction`
 

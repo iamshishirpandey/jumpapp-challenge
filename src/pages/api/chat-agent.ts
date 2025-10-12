@@ -86,11 +86,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const updatedMessages = [...messages, assistantMessageWithTools]
 
-      const finalResponse = await llmService.continueConversationWithToolResults(
-        updatedMessages,
-        processedResults,
-        ragResult.sources
-      )
+      const successfulTools = processedResults.filter(r => r.success)
+      const failedTools = processedResults.filter(r => !r.success)
+      
+      let finalMessage = ''
+      if (successfulTools.length > 0) {
+        const toolNames = successfulTools.map(r => r.toolName).join(', ')
+        finalMessage = `✅ Successfully executed: ${toolNames}\n`
+        
+        successfulTools.forEach(tool => {
+          if (tool.result && tool.result.message) {
+            finalMessage += `${tool.result.message}\n`
+          }
+        })
+      }
+      
+      if (failedTools.length > 0) {
+        finalMessage += `❌ Failed to execute: ${failedTools.map(r => r.toolName).join(', ')}`
+      }
+      
+      const finalResponse = {
+        message: finalMessage || 'Tasks completed successfully.'
+      }
 
       if (chatId) {
         await prisma.message.createMany({
@@ -147,7 +164,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.error('Chat agent error:', error)
     return res.status(500).json({ 
       error: 'Failed to generate response', 
-      details: error instanceof Error ? error.message : 'Unknown error' 
+      details: error instanceof Error ? error.message : 'Unknown error'
     })
   }
 }

@@ -230,13 +230,16 @@ const ChatPage = () => {
     setMessages(prev => [...prev, userMessage, loadingMessage])
 
     try {
-      console.log('Calling search API with chatId:', chatId)
-      const response = await fetch('/api/search', {
+      const response = await fetch('/api/chat-agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          query: content,
-          chatId: chatId 
+          message: content,
+          chatId: chatId,
+          conversationHistory: messages.filter(m => !m.isLoading).map(m => ({
+            role: m.role,
+            parts: [{ text: m.content }]
+          }))
         }),
       })
 
