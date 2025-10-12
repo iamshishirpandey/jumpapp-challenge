@@ -25,7 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const { query, limit = 5, threshold = 0.75, chatId } = req.body;
+    const { query, limit = 5, threshold = 0.3, chatId } = req.body;
 
     if (!query) {
       return res.status(400).json({ error: 'Query is required' });
@@ -53,11 +53,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const embeddingService = new EmbeddingService();
     
+
+    let searchChatHistory: any[] = [];
+    if (chatId) {
+      try {
+        const chat = await prisma.chat.findFirst({
+          where: {
+            id: chatId,
+            userId: user.id,
+          },
+          include: {
+            messages: {
+              orderBy: { createdAt: 'asc' },
+              take: 8, 
+            },
+          },
+        });
+        searchChatHistory = chat?.messages || [];
+      } catch (error) {
+       console.log(error)
+      }
+    }
+    
     const results: any = await embeddingService.searchSimilarDocuments(
       user.id,
       query,
       limit,
-      threshold
+      threshold,
+      searchChatHistory
     );
 
     const enrichedResults = await Promise.all(
@@ -132,7 +155,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     if (enrichedResults.length > 0) {
       try {
-        const ragResponse = await embeddingService.generateRAGResponse(user.id, query);
+        // Get chat history for context if chatId is provided
+        let chatHistory: any[] = [];
+        if (chatId) {
+          try {
+            const chat = await prisma.chat.findFirst({
+              where: {
+                id: chatId,
+                userId: user.id,
+              },
+              include: {
+                messages: {
+                  orderBy: { createdAt: 'asc' },
+                  take: 10, 
+                },
+              },
+            });
+            chatHistory = chat?.messages || [];
+          } catch (error) {
+      console.log(error)
+          }
+        }
+
+        const ragResponse = await embeddingService.generateRAGResponse(user.id, query, chatHistory);
         aiResponse = ragResponse.response;
         
         if (ragResponse.sources && ragResponse.sources.length > 0) {
