@@ -137,23 +137,21 @@ const ChatPage = () => {
     if (id && id !== 'new' && !isCreatingChat) {
       const chatId = id as string
       
-      if (chatCache[chatId]) {
-        if (currentChat?.id !== chatId) {
-          const cached = chatCache[chatId]
-          setCurrentChat(cached.chat)
-          setMessages(cached.messages)
-          setLastLoadedId(chatId)
-        }
-      } else if (chatId !== lastLoadedId) {
+      if (chatCache[chatId] && currentChat?.id !== chatId) {
+        const cached = chatCache[chatId]
+        setCurrentChat(cached.chat)
+        setMessages(cached.messages)
+        setLastLoadedId(chatId)
+      } 
+      else if (!chatCache[chatId] && chatId !== lastLoadedId && !isLoadingMessages) {
         loadChatMessages(chatId)
       }
-    } else if (!id && !isCreatingChat) {
-      if (currentChat !== null || messages.length > 0) {
-        setMessages([])
-        setCurrentChat(null)
-      }
+    } 
+    else if (!id && !isCreatingChat && !isLoadingMessages && messages.some(m => !m.isLoading)) {
+      setMessages([])
+      setCurrentChat(null)
     }
-  }, [id, isCreatingChat, skipLoadMessages])
+  }, [id])
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
@@ -230,11 +228,13 @@ const ChatPage = () => {
     console.log('SendMessage called with:', { content, id, currentChat: currentChat?.id })
 
     let chatId = id as string
+    let newChatCreated = false
     
     if (currentChat) {
       chatId = currentChat.id
     } else if (!chatId || chatId === 'new') {
       setIsCreatingChat(true)
+      newChatCreated = true
       try {
         const response = await fetch('/api/chats', {
           method: 'POST',
@@ -248,7 +248,6 @@ const ChatPage = () => {
           setChats(prevChats => [newChat, ...prevChats])
           setSkipLoadMessages(true)
           setLastLoadedId(newChat.id)
-          window.history.replaceState(null, '', `/${newChat.id}`)
         } else {
           setIsCreatingChat(false)
           return
@@ -276,6 +275,17 @@ const ChatPage = () => {
     }
 
     setMessages(prev => [...prev, userMessage, loadingMessage])
+    
+    if (chatId && chatId !== 'new') {
+      const chatToCache = currentChat || { id: chatId, title: content.slice(0, 50) }
+      setChatCache(prevCache => ({
+        ...prevCache,
+        [chatId]: {
+          chat: chatToCache,
+          messages: [...(prevCache[chatId]?.messages || []), userMessage, loadingMessage]
+        }
+      }))
+    }
 
     try {
       // Determine if this requires tool calling (sending emails, creating events, etc.)
@@ -290,17 +300,16 @@ const ChatPage = () => {
       
       const isToolAction = toolActionPatterns.some(pattern => pattern.test(content.toLowerCase()))
       
-      // Use chat API for tool actions, search API for information queries
       const apiEndpoint = isToolAction ? '/api/chat' : '/api/search'
-      console.log(`Using ${apiEndpoint} for query: "${content}" (isToolAction: ${isToolAction})`)
-      
+      const conversationHistory = messages.filter(m => !m.isLoading && m.content.trim()).map(m => ({
+        role: m.role === 'assistant' ? 'model' : m.role,
+        parts: [{ text: m.content }]
+      }))
+
       const requestBody = isToolAction ? {
         message: content,
         chatId: chatId,
-        conversationHistory: messages.filter(m => !m.isLoading).map(m => ({
-          role: m.role === 'assistant' ? 'model' : m.role,
-          parts: [{ text: m.content }]
-        }))
+        conversationHistory: conversationHistory
       } : {
         query: content,
         chatId: chatId,
@@ -335,11 +344,12 @@ const ChatPage = () => {
           msg.id === loadingMessage.id ? aiMessage : msg
         )
         
-        if (currentChat) {
+        if (chatId && chatId !== 'new') {
+          const chatToCache = currentChat || { id: chatId, title: content.slice(0, 50) }
           setChatCache(prevCache => ({
             ...prevCache,
-            [currentChat.id]: {
-              chat: currentChat,
+            [chatId]: {
+              chat: chatToCache,
               messages: newMessages
             }
           }))
@@ -348,15 +358,18 @@ const ChatPage = () => {
         return newMessages
       })
 
-      if (isCreatingChat) {
+      if (newChatCreated) {
         setIsCreatingChat(false)
+        if (chatId !== id) {
+          router.replace(`/${chatId}`, undefined, { shallow: true })
+        }
       }
 
     } catch (error) {
       
       const errorMessage: Message = {
         id: loadingMessage.id,
-        content: 'Sorry, I encountered an error processing your message. Please try again.',
+        content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
         role: 'assistant',
         createdAt: new Date()
       }
@@ -366,11 +379,12 @@ const ChatPage = () => {
           msg.id === loadingMessage.id ? errorMessage : msg
         )
         
-        if (currentChat) {
+        if (chatId && chatId !== 'new') {
+          const chatToCache = currentChat || { id: chatId, title: content.slice(0, 50) }
           setChatCache(prevCache => ({
             ...prevCache,
-            [currentChat.id]: {
-              chat: currentChat,
+            [chatId]: {
+              chat: chatToCache,
               messages: newMessages
             }
           }))
@@ -379,8 +393,11 @@ const ChatPage = () => {
         return newMessages
       })
       
-      if (isCreatingChat) {
+      if (newChatCreated) {
         setIsCreatingChat(false)
+        if (chatId !== id) {
+          router.replace(`/${chatId}`, undefined, { shallow: true })
+        }
       }
     }
   }
