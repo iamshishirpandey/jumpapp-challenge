@@ -248,6 +248,8 @@ const ChatPage = () => {
           setChats(prevChats => [newChat, ...prevChats])
           setSkipLoadMessages(true)
           setLastLoadedId(newChat.id)
+          // Update URL immediately but tell useEffect to not reload
+          window.history.replaceState(null, '', `/${newChat.id}`)
         } else {
           setIsCreatingChat(false)
           return
@@ -360,9 +362,6 @@ const ChatPage = () => {
 
       if (newChatCreated) {
         setIsCreatingChat(false)
-        if (chatId !== id) {
-          router.replace(`/${chatId}`, undefined, { shallow: true })
-        }
       }
 
     } catch (error) {
@@ -395,9 +394,6 @@ const ChatPage = () => {
       
       if (newChatCreated) {
         setIsCreatingChat(false)
-        if (chatId !== id) {
-          router.replace(`/${chatId}`, undefined, { shallow: true })
-        }
       }
     }
   }
