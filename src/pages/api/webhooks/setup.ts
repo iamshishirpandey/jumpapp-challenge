@@ -21,29 +21,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       where: { email: session.user.email },
     });
 
-    if (!user || !user.googleRefreshToken) {
+    const { type, calendarId } = req.body;
+
+    if (!type || !['gmail', 'calendar', 'hubspot'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid webhook type. Must be "gmail", "calendar", or "hubspot"' });
+    }
+
+    // Check connection requirements based on type
+    if ((type === 'gmail' || type === 'calendar') && !user.googleRefreshToken) {
       return res.status(400).json({ error: 'Google account not connected' });
     }
 
-    const { type, calendarId } = req.body;
-
-    if (!type || !['gmail', 'calendar'].includes(type)) {
-      return res.status(400).json({ error: 'Invalid webhook type. Must be "gmail" or "calendar"' });
+    if (type === 'hubspot' && (!user.hubspotConnected || !user.hubspotPortalId)) {
+      return res.status(400).json({ error: 'HubSpot account not connected' });
     }
 
-    const webhookService = new WebhookService(user.googleRefreshToken);
-
     let result;
-    if (type === 'gmail') {
-      result = await webhookService.setupGmailWebhook(user.id);
-    } else if (type === 'calendar') {
-      result = await webhookService.setupCalendarWebhook(user.id, calendarId);
+    if (type === 'gmail' || type === 'calendar') {
+      const webhookService = new WebhookService(user.googleRefreshToken!);
+      
+      if (type === 'gmail') {
+        result = await webhookService.setupGmailWebhook(user.id);
+      } else if (type === 'calendar') {
+        result = await webhookService.setupCalendarWebhook(user.id, calendarId);
+      }
+    } else if (type === 'hubspot') {
+      const webhookService = new WebhookService(''); // HubSpot doesn't need Google token
+      result = await webhookService.setupHubSpotWebhooks(user.id, user.hubspotPortalId!);
     }
 
     return res.status(200).json({
       success: true,
       type,
-      channelId: result?.channelId,
+      channelId: result?.channelId || result?.subscriptionId,
       resourceId: result?.resourceId,
       message: `${type} webhook set up successfully`
     });

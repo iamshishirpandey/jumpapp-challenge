@@ -281,7 +281,10 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
               <h2 className="text-lg font-semibold">Webhook Settings</h2>
               <p className="text-sm text-gray-500">Configure real-time synchronization</p>
             </div>
-            <WebhookSettings isConnected={syncStatus.gmail.connected} />
+            <WebhookSettings 
+              isConnected={syncStatus.gmail.connected} 
+              hubspotConnected={syncStatus.hubspot.connected} 
+            />
           </div>
         )
       default:

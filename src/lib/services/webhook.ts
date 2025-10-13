@@ -209,6 +209,75 @@ export class WebhookService {
   }
 
   /**
+   * Set up HubSpot webhooks
+   */
+  async setupHubSpotWebhooks(userId: string, portalId: string): Promise<{ subscriptionId: string }> {
+    try {
+      const webhookUrl = `${process.env.NEXTAUTH_URL}/api/webhooks/hubspot`;
+      
+      if (!process.env.HUBSPOT_CLIENT_ID || !process.env.HUBSPOT_CLIENT_SECRET) {
+        throw new Error('HubSpot client credentials are required');
+      }
+
+      // Get user's HubSpot refresh token
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { hubspotRefreshToken: true }
+      });
+
+      if (!user?.hubspotRefreshToken) {
+        throw new Error('User has no HubSpot refresh token');
+      }
+
+      const subscriptions = [{
+        subscriptionId: `hubspot-manual-${Date.now()}`,
+        eventTypes: ['contact.creation', 'contact.propertyChange', 'contact.deletion', 'company.creation', 'company.propertyChange', 'company.deletion'],
+        webhookUrl: webhookUrl,
+        configuredManually: true
+      }];
+
+      const channelId = `hubspot_${userId}_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
+      
+      await prisma.webhookSubscription.create({
+        data: {
+          userId,
+          channelId,
+          resourceId: portalId,
+          resourceType: 'hubspot',
+          isActive: true,
+          metadata: {
+            portalId,
+            subscriptions: subscriptions,
+            webhookUrl: webhookUrl
+          }
+        }
+      });
+
+      return {
+        subscriptionId: channelId
+      };
+    } catch (error) {
+      console.error('Error setting up HubSpot webhooks:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stop HubSpot webhooks
+   */
+  async stopHubSpotWebhooks(userId: string, channelId: string): Promise<void> {
+    try {
+      await prisma.webhookSubscription.updateMany({
+        where: { channelId },
+        data: { isActive: false }
+      });
+    } catch (error) {
+      console.error('Error stopping HubSpot webhooks:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Cleanup expired webhook subscriptions
    */
   async cleanupExpiredSubscriptions(): Promise<void> {
@@ -224,6 +293,8 @@ export class WebhookService {
         try {
           if (subscription.resourceType === 'calendar') {
             await this.stopCalendarWebhook(subscription.channelId, subscription.resourceId || '');
+          } else if (subscription.resourceType === 'hubspot') {
+            await this.stopHubSpotWebhooks(subscription.userId, subscription.channelId);
           }
           // Note: Gmail subscriptions typically auto-expire and don't need explicit stopping
         } catch (error) {
@@ -273,6 +344,8 @@ export class WebhookService {
           // Stop the old subscription
           if (subscription.resourceType === 'calendar') {
             await this.stopCalendarWebhook(subscription.channelId, subscription.resourceId || '');
+          } else if (subscription.resourceType === 'hubspot') {
+            await this.stopHubSpotWebhooks(subscription.userId, subscription.channelId);
           }
 
           // Create a new subscription
@@ -281,6 +354,11 @@ export class WebhookService {
           } else if (subscription.resourceType === 'calendar') {
             const calendarId = (subscription.metadata as any)?.calendarId || 'primary';
             await this.setupCalendarWebhook(userId, calendarId);
+          } else if (subscription.resourceType === 'hubspot') {
+            const portalId = (subscription.metadata as any)?.portalId;
+            if (portalId) {
+              await this.setupHubSpotWebhooks(userId, portalId);
+            }
           }
         } catch (error) {
           console.error(`Error refreshing subscription ${subscription.id}:`, error);

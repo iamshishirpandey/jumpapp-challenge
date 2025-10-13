@@ -2,7 +2,6 @@ import { NextApiRequest, NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
 import { HubSpotService } from '@/lib/services/hubspot'
 import { EmbeddingService } from '@/lib/services/embeddings'
-import crypto from 'crypto'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -11,22 +10,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    // Verify webhook signature for security
-    const signature = req.headers['x-hubspot-signature-v3'] as string
-    const requestBody = JSON.stringify(req.body)
-    
-    if (signature && process.env.HUBSPOT_WEBHOOK_SECRET) {
-      const expectedSignature = crypto
-        .createHmac('sha256', process.env.HUBSPOT_WEBHOOK_SECRET)
-        .update(requestBody)
-        .digest('hex')
-      
-      if (`sha256=${expectedSignature}` !== signature) {
-        console.error('Invalid HubSpot webhook signature')
-        return res.status(401).json({ error: 'Unauthorized' })
-      }
-    }
-
     const webhookData = req.body
     console.log('HubSpot webhook received:', JSON.stringify(webhookData, null, 2))
 

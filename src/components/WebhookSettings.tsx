@@ -19,15 +19,16 @@ interface WebhookSubscription {
 
 interface WebhookSettingsProps {
   isConnected: boolean;
+  hubspotConnected?: boolean;
 }
 
-export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
+export function WebhookSettings({ isConnected, hubspotConnected = false }: WebhookSettingsProps) {
   const [webhooks, setWebhooks] = useState<WebhookSubscription[]>([]);
   const [loading, setLoading] = useState(false);
   const [autoSetupTriggered, setAutoSetupTriggered] = useState(false);
 
   useEffect(() => {
-    if (isConnected) {
+    if (isConnected || hubspotConnected) {
       fetchWebhooks(true); // Show loading only on initial fetch
       
       // Set up polling to check for webhooks that might be setting up
@@ -40,8 +41,13 @@ export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
         if (!autoSetupTriggered && webhooks.length === 0) {
           setAutoSetupTriggered(true);
           try {
-            await recreateWebhook('gmail');
-            await recreateWebhook('calendar');
+            if (isConnected) {
+              await recreateWebhook('gmail');
+              await recreateWebhook('calendar');
+            }
+            if (hubspotConnected) {
+              await recreateWebhook('hubspot');
+            }
           } catch (error) {
             console.error('Auto setup failed:', error);
           }
@@ -59,7 +65,7 @@ export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
         clearTimeout(clearIntervalTimeout);
       };
     }
-  }, [isConnected, webhooks.length, autoSetupTriggered]);
+  }, [isConnected, hubspotConnected, webhooks.length, autoSetupTriggered]);
 
   const fetchWebhooks = async (showLoading = false) => {
     try {
@@ -80,7 +86,7 @@ export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
     }
   };
 
-  const recreateWebhook = async (type: 'gmail' | 'calendar') => {
+  const recreateWebhook = async (type: 'gmail' | 'calendar' | 'hubspot') => {
     try {
       const response = await fetch('/api/webhooks/setup', {
         method: 'POST',
@@ -164,11 +170,11 @@ export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
     return <Badge variant="default">Active</Badge>;
   };
 
-  if (!isConnected) {
+  if (!isConnected && !hubspotConnected) {
     return (
       <div className="p-4 border rounded-lg">
         <p className="text-sm text-muted-foreground">
-          Webhooks will be automatically set up when you connect your Google account for seamless real-time data updates.
+          Webhooks will be automatically set up when you connect your Google or HubSpot accounts for seamless real-time data updates.
         </p>
       </div>
     );
@@ -176,11 +182,13 @@ export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
 
   const gmailWebhook = webhooks.find(w => w.resourceType === 'gmail');
   const calendarWebhook = webhooks.find(w => w.resourceType === 'calendar');
+  const hubspotWebhook = webhooks.find(w => w.resourceType === 'hubspot');
   const isProduction = process.env.NODE_ENV === 'production';
 
   return (
     <div className="space-y-4">
         {/* Gmail Webhook */}
+        {isConnected && (
         <div className="flex items-center justify-between p-4 border rounded-lg">
           <div className="flex items-center gap-3">
             {gmailWebhook && getStatusIcon(gmailWebhook)}
@@ -237,8 +245,10 @@ export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
             )}
           </div>
         </div>
+        )}
 
         {/* Calendar Webhook */}
+        {isConnected && (
         <div className="flex items-center justify-between p-4 border rounded-lg">
           <div className="flex items-center gap-3">
             {calendarWebhook && getStatusIcon(calendarWebhook)}
@@ -307,6 +317,67 @@ export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
             )}
           </div>
         </div>
+        )}
+
+        {/* HubSpot Webhook */}
+        {hubspotConnected && (
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div className="flex items-center gap-3">
+              {hubspotWebhook && getStatusIcon(hubspotWebhook)}
+              <div>
+                <h4 className="font-medium">HubSpot Sync</h4>
+                <p className="text-sm text-muted-foreground">
+                  {hubspotWebhook ? "Real-time HubSpot notifications are active" : "Automatically configured on login"}
+                </p>
+                {hubspotWebhook && (
+                  <div className="flex items-center gap-2 mt-1">
+                    {getStatusBadge(hubspotWebhook)}
+                    <span className="text-xs text-muted-foreground">
+                      Last processed: {formatDate(hubspotWebhook.lastProcessedAt)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {hubspotWebhook ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => recreateWebhook('hubspot')}
+                    className="text-blue-600 hover:text-blue-700"
+                  >
+                    Recreate
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => deleteWebhook(hubspotWebhook.channelId, 'hubspot')}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Clock className="h-4 w-4" />
+                    Setting up...
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => recreateWebhook('hubspot')}
+                    className="ml-2"
+                  >
+                    Setup Now
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {loading && (
           <div className="flex items-center justify-center py-4">

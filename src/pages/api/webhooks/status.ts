@@ -21,15 +21,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(404).json({ error: 'User not found' });
       }
 
-      if (!user.googleRefreshToken) {
-        return res.status(200).json({
-          webhooks: [],
-          message: 'Google account not connected'
-        });
-      }
-
-      const webhookService = new WebhookService(user.googleRefreshToken);
-      const subscriptions = await webhookService.getUserWebhookSubscriptions(user.id);
+      // Get webhook subscriptions - we don't need Google token for this query
+      const subscriptions = await prisma.webhookSubscription.findMany({
+        where: {
+          userId: user.id,
+          isActive: true,
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: new Date() } }
+          ]
+        },
+        orderBy: { createdAt: 'desc' }
+      });
 
       return res.status(200).json({
         webhooks: subscriptions.map(sub => ({
@@ -65,8 +68,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         where: { email: session.user.email },
       });
 
-      if (!user || !user.googleRefreshToken) {
-        return res.status(400).json({ error: 'Google account not connected' });
+      if (!user) {
+        return res.status(400).json({ error: 'User not found' });
       }
 
       const { channelId } = req.body;
@@ -87,12 +90,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(403).json({ error: 'Not authorized to delete this webhook' });
       }
 
-      const webhookService = new WebhookService(user.googleRefreshToken);
-
-      if (subscription.resourceType === 'gmail') {
-        await webhookService.stopGmailWebhook(channelId, subscription.resourceId || '');
-      } else if (subscription.resourceType === 'calendar') {
-        await webhookService.stopCalendarWebhook(channelId, subscription.resourceId || '');
+      // Handle different webhook types
+      if (subscription.resourceType === 'gmail' || subscription.resourceType === 'calendar') {
+        if (!user.googleRefreshToken) {
+          return res.status(400).json({ error: 'Google account not connected' });
+        }
+        
+        const webhookService = new WebhookService(user.googleRefreshToken);
+        
+        if (subscription.resourceType === 'gmail') {
+          await webhookService.stopGmailWebhook(channelId, subscription.resourceId || '');
+        } else if (subscription.resourceType === 'calendar') {
+          await webhookService.stopCalendarWebhook(channelId, subscription.resourceId || '');
+        }
+      } else if (subscription.resourceType === 'hubspot') {
+        if (!user.hubspotConnected) {
+          return res.status(400).json({ error: 'HubSpot account not connected' });
+        }
+        
+        const webhookService = new WebhookService(''); // HubSpot doesn't need Google token
+        await webhookService.stopHubSpotWebhooks(user.id, channelId);
       }
 
       return res.status(200).json({
