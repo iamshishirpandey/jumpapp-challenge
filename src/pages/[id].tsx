@@ -755,37 +755,30 @@ const ChatPage = () => {
                         {message.emailCards && message.emailCards.length > 0 && (
                           <div className="mt-4 space-y-3">
                             {message.emailCards.map((emailCard, index) => (
-                              <div key={index} className="border border-green-200 rounded-lg p-4 bg-green-50 hover:shadow-sm transition-shadow">
-                                <div className="flex items-start justify-between">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-2">
-                                      <Mail className="h-4 w-4 text-green-600" />
-                                      <span className="text-sm font-medium text-green-700">Email Sent</span>
-                                      <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
-                                        ✓ Delivered
-                                      </span>
-                                    </div>
-                                    <h4 className="text-sm font-semibold text-gray-900 mb-1">
-                                      {emailCard.subject}
-                                    </h4>
-                                    <p className="text-xs text-gray-600 mb-2">
-                                      <span className="font-medium">To:</span> {emailCard.to}
-                                    </p>
-                                    <p className="text-sm text-gray-700 line-clamp-3">
-                                      {emailCard.body}
-                                    </p>
-                                    <div className="flex items-center gap-4 mt-2">
-                                      <span className="text-xs text-gray-500">
-                                        {new Date(emailCard.timestamp).toLocaleTimeString()}
-                                      </span>
-                                      <span className="text-xs text-gray-500">
-                                        ID: {emailCard.messageId}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <button className="ml-4 p-1 text-green-600 hover:text-green-800 transition-colors">
-                                    <ExternalLink className="h-4 w-4" />
-                                  </button>
+                              <div key={index} className="border border-green-200 rounded-lg p-4 bg-green-50">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Mail className="h-4 w-4 text-green-600" />
+                                  <span className="text-sm font-medium text-green-700">Email Sent</span>
+                                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                                    ✓ Delivered
+                                  </span>
+                                </div>
+                                <h4 className="text-sm font-semibold text-gray-900 mb-1">
+                                  {emailCard.subject}
+                                </h4>
+                                <p className="text-xs text-gray-600 mb-2">
+                                  <span className="font-medium">To:</span> {emailCard.to}
+                                </p>
+                                <p className="text-sm text-gray-700 line-clamp-3">
+                                  {emailCard.body}
+                                </p>
+                                <div className="flex items-center gap-4 mt-2">
+                                  <span className="text-xs text-gray-500">
+                                    {new Date(emailCard.timestamp).toLocaleTimeString()}
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    ID: {emailCard.messageId}
+                                  </span>
                                 </div>
                               </div>
                             ))}
@@ -880,42 +873,26 @@ const ChatPage = () => {
                               
                               if (sourceType === 'email') {
                                 return (
-                                  <div className="border border-gray-200 rounded-lg p-4 bg-white hover:shadow-sm transition-shadow">
-                                    <div className="flex items-start justify-between">
-                                      <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-2">
-                                          <Mail className="h-4 w-4 text-red-600" />
-                                          <span className="text-sm font-medium text-gray-700">Email</span>
-                                          <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">
-                                            {Math.round((primarySource.similarity || 0) * 100)}% match
-                                          </span>
-                                        </div>
-                                        {primarySource.title && (
-                                          <h4 className="text-sm font-semibold text-gray-900 mb-2">{primarySource.title}</h4>
-                                        )}
-                                        {primarySource.metadata?.from && (
-                                          <p className="text-xs text-gray-600 mb-1">From: {primarySource.metadata.from}</p>
-                                        )}
-                                        {primarySource.metadata?.date && (
-                                          <p className="text-xs text-gray-600 mb-2">
-                                            Date: {new Date(primarySource.metadata.date).toLocaleDateString()}
-                                          </p>
-                                        )}
-                                        <p className="text-sm text-gray-700 line-clamp-3">{primarySource.preview}</p>
-                                      </div>
-                                      {primarySource.gmailId && (
-                                        <button
-                                          onClick={() => {
-                                            const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${primarySource.gmailId}`;
-                                            window.open(gmailUrl, '_blank');
-                                          }}
-                                          className="ml-3 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded transition-colors"
-                                        >
-                                          <ExternalLink className="h-3 w-3" />
-                                          Open in Gmail
-                                        </button>
-                                      )}
+                                  <div className="border border-gray-200 rounded-lg p-4 bg-white">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <Mail className="h-4 w-4 text-red-600" />
+                                      <span className="text-sm font-medium text-gray-700">Email</span>
+                                      <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">
+                                        {Math.round((primarySource.similarity || 0) * 100)}% match
+                                      </span>
                                     </div>
+                                    {primarySource.title && (
+                                      <h4 className="text-sm font-semibold text-gray-900 mb-2">{primarySource.title}</h4>
+                                    )}
+                                    {primarySource.metadata?.from && (
+                                      <p className="text-xs text-gray-600 mb-1">From: {primarySource.metadata.from}</p>
+                                    )}
+                                    {primarySource.metadata?.date && (
+                                      <p className="text-xs text-gray-600 mb-2">
+                                        Date: {new Date(primarySource.metadata.date).toLocaleDateString()}
+                                      </p>
+                                    )}
+                                    <p className="text-sm text-gray-700 line-clamp-3">{primarySource.preview}</p>
                                   </div>
                                 );
                               } else if (sourceType === 'calendar_event') {

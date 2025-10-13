@@ -190,7 +190,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       if (response.needsToolExecution && response.toolCalls) {
-        console.log('🔧 Executing tools:', response.toolCalls.map(tc => ({ name: tc.name, id: tc.id })));
+        console.log('🔧 Executing tools:', response.toolCalls.map(tc => ({ name: tc.name, id: tc.id, params: tc.parameters })));
+        
+        // Check for duplicate email tool calls
+        const emailToolCalls = response.toolCalls.filter(tc => tc.name === 'send_email');
+        if (emailToolCalls.length > 1) {
+          console.warn(`⚠️  Multiple send_email tool calls detected: ${emailToolCalls.length}`);
+          emailToolCalls.forEach((call, index) => {
+            console.log(`Email call ${index + 1}:`, { to: call.parameters.to, subject: call.parameters.subject });
+          });
+        }
+        
         const toolResults = await Promise.allSettled(
           response.toolCalls.map(toolCall => {
             console.log(`🔧 Executing tool: ${toolCall.name} with params:`, toolCall.parameters);
@@ -223,6 +233,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         // Handle sent emails for RAG sync
         const emailTools = processedResults.filter(r => r.success && r.toolName === 'send_email');
+        const sentEmailIds = new Set<string>();
+        
         if (emailTools.length > 0) {
           for (const emailTool of emailTools) {
             try {
@@ -248,6 +260,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                   userId: user.id
                 }
               });
+
+              // Track sent email ID to exclude from sources
+              sentEmailIds.add(savedEmail.id);
 
               // Process for RAG
               await embeddingService.processEmailForRAG(user.id, savedEmail);
@@ -319,19 +334,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }));
           console.log(`🔍 Using search_emails results for cards: ${enrichedResults.length} emails`);
         } else {
-          // Fallback to RAG results for card display
-          enrichedResults = await getEnrichedResults(ragResult.relevantDocuments || []);
-          console.log(`📄 Using RAG results for cards: ${enrichedResults.length} documents`);
+          // Fallback to RAG results for card display, but exclude recently sent emails
+          const allResults = await getEnrichedResults(ragResult.relevantDocuments || []);
+          enrichedResults = allResults.filter(result => {
+            // Exclude recently sent emails from appearing as source cards
+            if (result.sourceType === 'email' && sentEmailIds.has(result.sourceId)) {
+              console.log(`🚫 Excluding recently sent email from sources: ${result.title}`);
+              return false;
+            }
+            return true;
+          });
+          console.log(`📄 Using RAG results for cards: ${enrichedResults.length} documents (${allResults.length - enrichedResults.length} sent emails excluded)`);
         }
 
-        const emailCards = emailTools.map(tool => ({
-          type: 'email_sent',
-          messageId: tool.result.messageId,
-          to: response.toolCalls!.find(tc => tc.name === 'send_email')?.parameters.to,
-          subject: response.toolCalls!.find(tc => tc.name === 'send_email')?.parameters.subject,
-          body: response.toolCalls!.find(tc => tc.name === 'send_email')?.parameters.body,
-          timestamp: new Date().toISOString()
-        }));
+        // Create email cards but deduplicate by messageId and recipient to prevent duplicates
+        const emailCardMap = new Map();
+        emailTools.forEach((tool, index) => {
+          // Match each successful email tool with its corresponding tool call
+          const matchingToolCall = response.toolCalls!.filter(tc => tc.name === 'send_email')[index];
+          if (matchingToolCall && tool.result && tool.result.messageId) {
+            // Use messageId + recipient as key to handle edge cases
+            const cardKey = `${tool.result.messageId}-${matchingToolCall.parameters.to}`;
+            if (!emailCardMap.has(cardKey)) {
+              emailCardMap.set(cardKey, {
+                type: 'email_sent',
+                messageId: tool.result.messageId,
+                to: matchingToolCall.parameters.to,
+                subject: matchingToolCall.parameters.subject || 'Email via AI Assistant',
+                body: matchingToolCall.parameters.body || '',
+                timestamp: new Date().toISOString()
+              });
+            }
+          }
+        });
+        const emailCards = Array.from(emailCardMap.values());
+        
+        console.log(`📧 Email tools processed: ${emailTools.length}, unique cards created: ${emailCards.length}`);
 
         const finalMessageText = finalMessage || 'Tasks completed successfully.';
 

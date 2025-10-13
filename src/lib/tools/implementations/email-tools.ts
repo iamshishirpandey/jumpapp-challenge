@@ -46,11 +46,23 @@ async function getGmailClient(userId: string): Promise<gmail_v1.Gmail> {
   return google.gmail({ version: 'v1', auth: oauth2Client })
 }
 
+// Add a simple in-memory deduplication cache for recent emails
+const recentEmailCache = new Map();
+const EMAIL_CACHE_TTL = 30000; // 30 seconds
+
 export async function sendEmail(parameters: Record<string, any>, userId: string) {
   const { to, subject, body, cc, bcc } = parameters
   
+  // Create a unique key for this email to prevent duplicates
+  const emailKey = `${userId}:${to}:${subject}:${Date.now() - (Date.now() % EMAIL_CACHE_TTL)}`;
+  
+  if (recentEmailCache.has(emailKey)) {
+    console.log(`🚫 Duplicate email attempt blocked: ${emailKey}`);
+    return recentEmailCache.get(emailKey);
+  }
+  
   try {
-    console.log(`Attempting to send email to ${to} for user ${userId}`)
+    console.log(`📧 Attempting to send email to ${to} for user ${userId} (key: ${emailKey})`)
     const gmail = await getGmailClient(userId)
     
     // Get user's email address
@@ -85,29 +97,23 @@ export async function sendEmail(parameters: Record<string, any>, userId: string)
       }
     })
 
-    console.log('Email sent successfully, message ID:', response.data.id)
+    console.log('✅ Email sent successfully, message ID:', response.data.id)
     
-    // Trigger instant sync to update pgvector with the sent email
-    try {
-      const syncResponse = await fetch(`${process.env.NEXTAUTH_URL}/api/sync/instant`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (syncResponse.ok) {
-        console.log('Instant sync triggered after email send');
-      }
-    } catch (syncError) {
-      console.log('Instant sync failed, but email was sent successfully');
-    }
-    
-    return {
+    const result = {
       messageId: response.data.id,
       success: true,
       message: `Email sent successfully to ${to}`
-    }
+    };
+    
+    // Cache the result to prevent duplicates
+    recentEmailCache.set(emailKey, result);
+    
+    // Clean up old cache entries
+    setTimeout(() => {
+      recentEmailCache.delete(emailKey);
+    }, EMAIL_CACHE_TTL);
+    
+    return result;
   } catch (error) {
     console.error('Email sending error:', error)
     throw new Error(`Failed to send email: ${error instanceof Error ? error.message : 'Unknown error'}`)
