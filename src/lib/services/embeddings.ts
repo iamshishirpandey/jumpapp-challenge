@@ -574,7 +574,6 @@ export class EmbeddingService {
     toolsUsed?: any[];
   }> {
     try {
-      // Determine source type filter based on query intent
       let sourceTypeFilter: string[] | undefined;
       const queryLower = query.toLowerCase();
       
@@ -587,7 +586,7 @@ export class EmbeddingService {
       }
       
       // Use higher threshold for more precise results
-      const relevantDocs = await this.searchSimilarDocuments(userId, query, 10, 0.4, chatHistory, sourceTypeFilter);
+      const relevantDocs = await this.searchSimilarDocuments(userId, query, 15, 0.3, chatHistory, sourceTypeFilter);
       
       if (!relevantDocs || relevantDocs.length === 0) {
         return {
@@ -627,6 +626,7 @@ export class EmbeddingService {
       const sources = await Promise.all(
         sourceDocs
           .filter(doc => doc.similarity >= 0.4)
+          .sort((a, b) => b.similarity - a.similarity)
           .map(async (doc) => {
             const metadata = doc.metadata || {};
             let gmailId = null;
@@ -703,7 +703,6 @@ export class EmbeddingService {
         timeZoneName: 'short'
       });
 
-      // Check if this will result in calendar cards being shown
       const calendarEventsCount = sourceDocs.filter(doc => 
         doc.sourceType === 'calendar_event' &&
         !doc.title?.toLowerCase().includes('available') &&

@@ -198,9 +198,9 @@ export async function searchEmails(parameters: Record<string, any>, userId: stri
       userId,
       searchQuery,
       limit,
-      0.3, // Lower threshold for broader search
-      undefined, // No chat history
-      ['email'] // Filter for email documents only
+      0.4, 
+      undefined, 
+      ['email']
     )
 
     if (!results || results.length === 0) {
@@ -211,8 +211,10 @@ export async function searchEmails(parameters: Record<string, any>, userId: stri
       }
     }
 
-    // Filter for email documents and enrich with actual email data
-    const emailDocs = (results as any[]).filter(doc => doc.sourceType === 'email')
+  
+    const emailDocs = (results as any[])
+      .filter(doc => doc.sourceType === 'email')
+      .sort((a, b) => b.similarity - a.similarity)
     
     const emailDetails = await Promise.all(
       emailDocs.map(async (doc) => {

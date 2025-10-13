@@ -298,6 +298,9 @@ const ChatPage = () => {
         /\b(create|add|new)\b.*\b(contact|person)\b/i, // Contact patterns
         /\b(create|add|make)\b.*\b(task|todo|reminder)\b/i, // Task patterns
         /\b(write|compose|draft)\b.*\b(email|message)\b/i, // Email composition
+        /\b(which|what|where|when|who)\b.*\b(email|mail|message)\b/i, // Email search questions
+        /\b(find|search|show|get)\b.*\b(email|mail|message)\b/i, // Email search commands
+        /\b(email|mail)\b.*\b(mentioned|about|from|to|contains)\b/i, // Email content questions
       ]
       
       const isToolAction = toolActionPatterns.some(pattern => pattern.test(content.toLowerCase()))

@@ -257,27 +257,72 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         }
 
-        const successfulTools = processedResults.filter(r => r.success);
-        const failedTools = processedResults.filter(r => !r.success);
-        
+        // Get LLM's actual response after tool execution
         let finalMessage = '';
-        if (successfulTools.length > 0) {
-          const toolNames = successfulTools.map(r => r.toolName).join(', ');
-          finalMessage = `✅ Successfully executed: ${toolNames}\n`;
+        try {
+          const continueResponse = await llmService.continueConversationWithToolResults(
+            messages,
+            processedResults,
+            ragResult.sources
+          );
+          finalMessage = continueResponse.message;
+        } catch (continueError) {
+          console.error('Error getting LLM continuation response:', continueError);
           
-          successfulTools.forEach(tool => {
-            if (tool.result && tool.result.message) {
-              finalMessage += `${tool.result.message}\n`;
-            }
-          });
-        }
-        
-        if (failedTools.length > 0) {
-          finalMessage += `❌ Failed to execute: ${failedTools.map(r => r.toolName).join(', ')}`;
+          const successfulTools = processedResults.filter(r => r.success);
+          const failedTools = processedResults.filter(r => !r.success);
+          
+          if (successfulTools.length > 0) {
+            const toolNames = successfulTools.map(r => r.toolName).join(', ');
+            finalMessage = `✅ Successfully executed: ${toolNames}\n`;
+            
+            successfulTools.forEach(tool => {
+              if (tool.result && tool.result.message) {
+                finalMessage += `${tool.result.message}\n`;
+              }
+            });
+          }
+          
+          if (failedTools.length > 0) {
+            finalMessage += `❌ Failed to execute: ${failedTools.map(r => r.toolName).join(', ')}`;
+          }
         }
 
-        // Get enriched results for card display from relevantDocuments
-        const enrichedResults = await getEnrichedResults(ragResult.relevantDocuments || []);
+
+        const searchEmailTools = processedResults.filter(r => r.success && r.toolName === 'search_emails');
+        let enrichedResults;
+        
+        if (searchEmailTools.length > 0) {
+      
+          const emailSearchResults = searchEmailTools[0].result?.emails || [];
+          enrichedResults = emailSearchResults.map((email: any) => ({
+            id: email.id,
+            sourceType: 'email',
+            sourceId: email.id,
+            title: email.subject,
+            content: email.snippet,
+            preview: email.snippet,
+            similarity: email.similarity,
+            gmailId: email.id,
+            sourceData: {
+              subject: email.subject,
+              from: email.from,
+              to: email.to,
+              internalDate: new Date(email.date),
+              snippet: email.snippet
+            },
+            metadata: {
+              from: email.from,
+              date: new Date(email.date),
+              subject: email.subject
+            }
+          }));
+          console.log(`🔍 Using search_emails results for cards: ${enrichedResults.length} emails`);
+        } else {
+          // Fallback to RAG results for card display
+          enrichedResults = await getEnrichedResults(ragResult.relevantDocuments || []);
+          console.log(`📄 Using RAG results for cards: ${enrichedResults.length} documents`);
+        }
 
         const emailCards = emailTools.map(tool => ({
           type: 'email_sent',
