@@ -4,6 +4,7 @@ import { useRouter } from 'next/router'
 import { User, Send, SquarePen, LogOut, ChevronUp, X, Settings, Loader2, ExternalLink, Mail, Calendar, Users, FileText, Plus } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useHubSpot } from '@/hooks/useHubSpot'
+import Head from 'next/head'
 import {
   Sidebar,
   SidebarContent,
@@ -117,12 +118,15 @@ const ChatPage = () => {
   const [isCreatingChat, setIsCreatingChat] = useState(false)
   const [skipLoadMessages, setSkipLoadMessages] = useState(false)
   const [mobileTab, setMobileTab] = useState('chat')
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+  const [chatCache, setChatCache] = useState<{[key: string]: {chat: Chat, messages: Message[]}}>({})
+  const [lastLoadedId, setLastLoadedId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (user) {
+    if (user && chats.length === 0) {
       loadChats()
     }
-  }, [user])
+  }, [user, chats.length])
 
   useEffect(() => {
     if (skipLoadMessages) {
@@ -131,12 +135,25 @@ const ChatPage = () => {
     }
     
     if (id && id !== 'new' && !isCreatingChat) {
-      loadChatMessages(id as string)
+      const chatId = id as string
+      
+      if (chatCache[chatId]) {
+        if (currentChat?.id !== chatId) {
+          const cached = chatCache[chatId]
+          setCurrentChat(cached.chat)
+          setMessages(cached.messages)
+          setLastLoadedId(chatId)
+        }
+      } else if (chatId !== lastLoadedId) {
+        loadChatMessages(chatId)
+      }
     } else if (!id && !isCreatingChat) {
-      setMessages([])
-      setCurrentChat(null)
+      if (currentChat !== null || messages.length > 0) {
+        setMessages([])
+        setCurrentChat(null)
+      }
     }
-  }, [id])
+  }, [id, isCreatingChat, skipLoadMessages])
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
@@ -146,7 +163,9 @@ const ChatPage = () => {
     }
   }, [router, hubspot])
 
-  const loadChats = async () => {
+  const loadChats = async (forceRefresh = false) => {
+    if (chats.length > 0 && !forceRefresh) return
+    
     try {
       setIsLoadingChats(true)
       const response = await fetch('/api/chats')
@@ -163,12 +182,12 @@ const ChatPage = () => {
 
   const loadChatMessages = async (chatId: string) => {
     try {
+      setIsLoadingMessages(true)
       const response = await fetch(`/api/chats/${chatId}`)
       const data = await response.json()
       
       if (response.ok) {
-        setCurrentChat(data)
-        // Convert database messages to frontend format
+        const chat = data
         const formattedMessages = (data.messages || []).map((msg: any) => ({
           id: msg.id,
           content: msg.content,
@@ -178,10 +197,19 @@ const ChatPage = () => {
           emailCards: msg.metadata?.emailCards || [],
           toolsUsed: msg.metadata?.toolsUsed || []
         }))
+        
+        setChatCache(prev => ({
+          ...prev,
+          [chatId]: { chat, messages: formattedMessages }
+        }))
+        
+        setCurrentChat(chat)
         setMessages(formattedMessages)
       }
     } catch (error) {
       console.error('Error loading chat messages:', error)
+    } finally {
+      setIsLoadingMessages(false)
     }
   }
 
@@ -190,10 +218,9 @@ const ChatPage = () => {
   }
 
   const handleNewChat = () => {
-    
     setCurrentChat(null)
     setMessages([])
-    
+    setIsLoadingMessages(false)
     router.push('/')
   }
 
@@ -217,11 +244,10 @@ const ChatPage = () => {
         const newChat = await response.json()
         if (response.ok) {
           chatId = newChat.id
-          console.log('Chat created successfully:', newChat.id)
           setCurrentChat(newChat)
           setChats(prevChats => [newChat, ...prevChats])
           setSkipLoadMessages(true)
-          
+          setLastLoadedId(newChat.id)
           window.history.replaceState(null, '', `/${newChat.id}`)
         } else {
           setIsCreatingChat(false)
@@ -304,9 +330,23 @@ const ChatPage = () => {
         toolsUsed: data.toolsUsed || []
       }
 
-      setMessages(prev => prev.map(msg => 
-        msg.id === loadingMessage.id ? aiMessage : msg
-      ))
+      setMessages(prev => {
+        const newMessages = prev.map(msg => 
+          msg.id === loadingMessage.id ? aiMessage : msg
+        )
+        
+        if (currentChat) {
+          setChatCache(prevCache => ({
+            ...prevCache,
+            [currentChat.id]: {
+              chat: currentChat,
+              messages: newMessages
+            }
+          }))
+        }
+        
+        return newMessages
+      })
 
       if (isCreatingChat) {
         setIsCreatingChat(false)
@@ -321,9 +361,23 @@ const ChatPage = () => {
         createdAt: new Date()
       }
 
-      setMessages(prev => prev.map(msg => 
-        msg.id === loadingMessage.id ? errorMessage : msg
-      ))
+      setMessages(prev => {
+        const newMessages = prev.map(msg => 
+          msg.id === loadingMessage.id ? errorMessage : msg
+        )
+        
+        if (currentChat) {
+          setChatCache(prevCache => ({
+            ...prevCache,
+            [currentChat.id]: {
+              chat: currentChat,
+              messages: newMessages
+            }
+          }))
+        }
+        
+        return newMessages
+      })
       
       if (isCreatingChat) {
         setIsCreatingChat(false)
@@ -344,7 +398,32 @@ const ChatPage = () => {
   }
 
   return (
-    <SidebarProvider>
+    <>
+      <Head>
+        <style jsx>{`
+          @keyframes fadeInUp {
+            from {
+              opacity: 0;
+              transform: translateY(10px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+          .animate-fade-in-up {
+            animation: fadeInUp 0.3s ease-out;
+          }
+          .chat-transition {
+            transition: all 0.2s ease-in-out;
+          }
+          .smooth-hover:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+          }
+        `}</style>
+      </Head>
+      <SidebarProvider>
       <Sidebar collapsible="icon">
         <SidebarHeaderContent />
 
@@ -376,6 +455,21 @@ const ChatPage = () => {
                             <span className="text-xs text-green-600">Portal: {hubspot.portalId}</span>
                           )}
                         </div>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await fetch('/api/hubspot/sync', { method: 'POST' })
+                            } catch (error) {
+                              console.error('Sync error:', error)
+                            }
+                          }}
+                          className="text-blue-500 hover:text-blue-700 transition-colors mr-2"
+                          title="Manual Sync"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        </button>
                         <button
                           onClick={hubspot.disconnect}
                           className="text-red-500 hover:text-red-700 transition-colors"
@@ -420,10 +514,14 @@ const ChatPage = () => {
                   chats.map((chat) => (
                     <SidebarMenuItem key={chat.id}>
                       <SidebarMenuButton
-                        onClick={() => router.push(`/${chat.id}`)}
+                        onClick={() => {
+                          if (id !== chat.id) {
+                            router.push(`/${chat.id}`)
+                          }
+                        }}
                         isActive={id === chat.id}
                         tooltip={chat.title || 'Untitled Chat'}
-                        className="px-2"
+                        className="px-2 chat-transition smooth-hover"
                       >
                         <span>{chat.title || 'Untitled Chat'}</span>
                       </SidebarMenuButton>
@@ -536,11 +634,13 @@ const ChatPage = () => {
                       <div
                         key={chat.id}
                         onClick={() => {
-                          router.push(`/${chat.id}`)
+                          if (id !== chat.id) {
+                            router.push(`/${chat.id}`)
+                          }
                           setMobileTab('chat')
                         }}
-                        className={`p-3 rounded-lg border cursor-pointer hover:bg-gray-50 ${
-                          id === chat.id ? 'bg-gray-100 border-gray-300' : 'bg-white border-gray-200'
+                        className={`p-3 rounded-lg border cursor-pointer chat-transition smooth-hover ${
+                          id === chat.id ? 'bg-gray-100 border-gray-300' : 'bg-white border-gray-200 hover:bg-gray-50'
                         }`}
                       >
                         <span className="text-sm font-medium">{chat.title || 'Untitled Chat'}</span>
@@ -595,8 +695,16 @@ const ChatPage = () => {
             <div className="flex flex-col h-full">
               <div className="flex-1 overflow-y-auto px-4 py-6">
                 <div className="mx-auto max-w-3xl space-y-6">
-                  {messages.map((message) => (
-                    <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {isLoadingMessages ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="flex flex-col items-center space-y-3">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600"></div>
+                        <p className="text-sm text-gray-500">Loading conversation...</p>
+                      </div>
+                    </div>
+                  ) : (
+                    messages.map((message) => (
+                    <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
                       <div className={`flex flex-col space-y-2 ${message.role === 'user' ? 'items-end' : 'items-start max-w-[80%]'}`}>
                         <div className={`rounded-lg py-2 ${
                           message.role === 'user' 
@@ -888,7 +996,8 @@ const ChatPage = () => {
                         )}
                       </div>
                     </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -929,6 +1038,7 @@ const ChatPage = () => {
         </div>
       </SidebarInset>
     </SidebarProvider>
+    </>
   )
 }
 

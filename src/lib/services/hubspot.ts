@@ -10,6 +10,10 @@ export class HubSpotService {
     });
   }
 
+  setAccessToken(accessToken: string) {
+    this.client.setAccessToken(accessToken);
+  }
+
   async refreshAccessToken(refreshToken: string): Promise<string> {
     try {
       const response = await fetch('https://api.hubapi.com/oauth/v1/token', {
@@ -222,6 +226,50 @@ export class HubSpotService {
       return response;
     } catch (error) {
       console.error('Error creating note:', error);
+      throw error;
+    }
+  }
+
+  async fetchContactById(contactId: string) {
+    try {
+      const response = await this.client.crm.contacts.basicApi.getById(
+        contactId,
+        [
+          'firstname',
+          'lastname', 
+          'email',
+          'phone',
+          'company',
+          'jobtitle',
+          'lifecyclestage',
+          'createdate',
+          'lastmodifieddate'
+        ]
+      );
+      return response;
+    } catch (error) {
+      console.error('Error fetching contact by ID:', error);
+      throw error;
+    }
+  }
+
+  async fetchEngagementById(engagementId: string) {
+    try {
+      // Try fetching as a note first
+      const response = await this.client.crm.objects.notes.basicApi.getById(
+        engagementId,
+        ['hs_note_body', 'hs_timestamp', 'hs_lastmodifieddate'],
+        undefined,
+        ['contacts']
+      );
+      return {
+        ...response,
+        type: 'NOTE',
+        bodyPreview: response.properties.hs_note_body,
+        body: response.properties.hs_note_body
+      };
+    } catch (error) {
+      console.error('Error fetching engagement by ID:', error);
       throw error;
     }
   }
