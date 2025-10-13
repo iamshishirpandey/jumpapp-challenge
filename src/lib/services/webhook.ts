@@ -86,6 +86,13 @@ export class WebhookService {
       // Create webhook URL for calendar events
       const webhookUrl = `${process.env.NEXTAUTH_URL}/api/webhooks/calendar`;
       
+      console.log('Setting up calendar webhook:', {
+        userId,
+        channelId,
+        calendarId,
+        webhookUrl
+      });
+      
       // Set up Calendar push notification
       const response = await calendar.events.watch({
         auth: this.oauth2Client,
@@ -98,6 +105,8 @@ export class WebhookService {
           expiration: Date.now() + (7 * 24 * 60 * 60 * 1000) // 7 days from now
         }
       });
+
+      console.log('Calendar webhook response:', response.data);
 
 
       if (!response.data.resourceId) {

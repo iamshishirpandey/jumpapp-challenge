@@ -16,9 +16,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const resourceId = req.headers['x-goog-resource-id'] as string;
     const messageNumber = req.headers['x-goog-message-number'] as string;
     
+    console.log('Calendar webhook received:', {
+      channelId,
+      resourceState,
+      resourceId,
+      messageNumber,
+      headers: req.headers
+    });
 
-    if (resourceState !== 'sync') {
-      return res.status(200).json({ status: 'ignored', reason: 'not a sync event' });
+    // Accept both 'sync' and 'exists' states for calendar events
+    if (resourceState !== 'sync' && resourceState !== 'exists') {
+      console.log('Ignoring calendar webhook, resource state:', resourceState);
+      return res.status(200).json({ status: 'ignored', reason: `not a sync/exists event: ${resourceState}` });
     }
 
     const subscription = await prisma.webhookSubscription.findUnique({

@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { GmailService } from '@/lib/services/gmail'
 import { CalendarService } from '@/lib/services/calendar'
 import { EmbeddingService } from '@/lib/services/embeddings'
+import { WebhookService } from '@/lib/services/webhook'
 
 export const authOptions: NextAuthOptions = {
   // adapter: PrismaAdapter(prisma), // Temporarily disabled
@@ -111,6 +112,7 @@ export const authOptions: NextAuthOptions = {
             setImmediate(async () => {
               try {
                 const embeddingService = new EmbeddingService()
+                const webhookService = new WebhookService(account.refresh_token!)
                 
                 try {
                   const gmailService = new GmailService(account.refresh_token!)
@@ -129,6 +131,23 @@ export const authOptions: NextAuthOptions = {
                     events.map(event => embeddingService.processEventForRAG(updatedUser.id, event))
                   )
                 } catch (calendarError) {}
+                
+                try {
+                  const existingWebhooks = await webhookService.getUserWebhookSubscriptions(updatedUser.id)
+                  const hasGmailWebhook = existingWebhooks.some(w => w.resourceType === 'gmail' && w.isActive)
+                  const hasCalendarWebhook = existingWebhooks.some(w => w.resourceType === 'calendar' && w.isActive)
+                  
+                  if (!hasGmailWebhook) {
+                    await webhookService.setupGmailWebhook(updatedUser.id)
+                  }
+                  
+                  // Only setup calendar webhook in production (webhooks need publicly accessible URL)
+                  if (!hasCalendarWebhook && process.env.NODE_ENV === 'production') {
+                    await webhookService.setupCalendarWebhook(updatedUser.id, 'primary')
+                  }
+                } catch (webhookError) {
+                  console.error('Webhook setup error during login:', webhookError)
+                }
               } catch (syncError) {}
             })
           }

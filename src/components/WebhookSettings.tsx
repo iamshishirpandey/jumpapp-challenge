@@ -24,20 +24,46 @@ interface WebhookSettingsProps {
 export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
   const [webhooks, setWebhooks] = useState<WebhookSubscription[]>([]);
   const [loading, setLoading] = useState(false);
-  const [setupLoading, setSetupLoading] = useState<{ gmail: boolean; calendar: boolean }>({
-    gmail: false,
-    calendar: false
-  });
+  const [autoSetupTriggered, setAutoSetupTriggered] = useState(false);
 
   useEffect(() => {
     if (isConnected) {
-      fetchWebhooks();
+      fetchWebhooks(true); // Show loading only on initial fetch
+      
+      // Set up polling to check for webhooks that might be setting up
+      const interval = setInterval(() => {
+        fetchWebhooks(); // No loading indicator for polling
+      }, 3000); // Check every 3 seconds
+      
+      // After 15 seconds, if no webhooks exist, trigger auto setup
+      const autoSetupTimeout = setTimeout(async () => {
+        if (!autoSetupTriggered && webhooks.length === 0) {
+          setAutoSetupTriggered(true);
+          try {
+            await recreateWebhook('gmail');
+            await recreateWebhook('calendar');
+          } catch (error) {
+            console.error('Auto setup failed:', error);
+          }
+        }
+      }, 15000);
+      
+      // Clear interval after 2 minutes
+      const clearIntervalTimeout = setTimeout(() => {
+        clearInterval(interval);
+      }, 120000);
+      
+      return () => {
+        clearInterval(interval);
+        clearTimeout(autoSetupTimeout);
+        clearTimeout(clearIntervalTimeout);
+      };
     }
-  }, [isConnected]);
+  }, [isConnected, webhooks.length, autoSetupTriggered]);
 
-  const fetchWebhooks = async () => {
+  const fetchWebhooks = async (showLoading = false) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const response = await fetch('/api/webhooks/status');
       const data = await response.json();
       
@@ -48,16 +74,14 @@ export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
       }
     } catch (error) {
       console.error('Error fetching webhooks:', error);
-      toast.error('Failed to load webhook status');
+      if (showLoading) toast.error('Failed to load webhook status');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
-  const setupWebhook = async (type: 'gmail' | 'calendar') => {
+  const recreateWebhook = async (type: 'gmail' | 'calendar') => {
     try {
-      setSetupLoading(prev => ({ ...prev, [type]: true }));
-      
       const response = await fetch('/api/webhooks/setup', {
         method: 'POST',
         headers: {
@@ -72,16 +96,14 @@ export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
       const data = await response.json();
       
       if (response.ok) {
-        toast.success(`${type} webhook set up successfully`);
-        await fetchWebhooks(); // Refresh the list
+        toast.success(`${type} webhook recreated successfully`);
+        await fetchWebhooks(true);
       } else {
-        throw new Error(data.error || `Failed to set up ${type} webhook`);
+        throw new Error(data.error || `Failed to recreate ${type} webhook`);
       }
     } catch (error) {
-      console.error(`Error setting up ${type} webhook:`, error);
-      toast.error(`Failed to set up ${type} webhook: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setSetupLoading(prev => ({ ...prev, [type]: false }));
+      console.error(`Error recreating ${type} webhook:`, error);
+      toast.error(`Failed to recreate ${type} webhook: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -103,7 +125,7 @@ export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
       
       if (response.ok) {
         toast.success(`${resourceType} webhook stopped successfully`);
-        await fetchWebhooks(); // Refresh the list
+        await fetchWebhooks(true); // Refresh the list
       } else {
         throw new Error(data.error || 'Failed to stop webhook');
       }
@@ -144,40 +166,20 @@ export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
 
   if (!isConnected) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Webhook className="h-5 w-5" />
-            Real-time Sync (Webhooks)
-          </CardTitle>
-          <CardDescription>
-            Connect your Google account to enable real-time email and calendar synchronization
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Please connect your Google account first to set up webhooks for real-time data updates.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="p-4 border rounded-lg">
+        <p className="text-sm text-muted-foreground">
+          Webhooks will be automatically set up when you connect your Google account for seamless real-time data updates.
+        </p>
+      </div>
     );
   }
 
   const gmailWebhook = webhooks.find(w => w.resourceType === 'gmail');
   const calendarWebhook = webhooks.find(w => w.resourceType === 'calendar');
+  const isProduction = process.env.NODE_ENV === 'production';
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Webhook className="h-5 w-5" />
-          Real-time Sync (Webhooks)
-        </CardTitle>
-        <CardDescription>
-          Set up real-time notifications to keep your data synchronized automatically
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <div className="space-y-4">
         {/* Gmail Webhook */}
         <div className="flex items-center justify-between p-4 border rounded-lg">
           <div className="flex items-center gap-3">
@@ -185,7 +187,7 @@ export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
             <div>
               <h4 className="font-medium">Gmail Sync</h4>
               <p className="text-sm text-muted-foreground">
-                Get notified when new emails arrive
+                {gmailWebhook ? "Real-time email notifications are active" : "Automatically configured on login"}
               </p>
               {gmailWebhook && (
                 <div className="flex items-center gap-2 mt-1">
@@ -199,23 +201,39 @@ export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
           </div>
           <div className="flex items-center gap-2">
             {gmailWebhook ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => deleteWebhook(gmailWebhook.channelId, 'gmail')}
-                className="text-red-600 hover:text-red-700"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => recreateWebhook('gmail')}
+                  className="text-blue-600 hover:text-blue-700"
+                >
+                  Recreate
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => deleteWebhook(gmailWebhook.channelId, 'gmail')}
+                  className="text-red-600 hover:text-red-700"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
             ) : (
-              <Button
-                onClick={() => setupWebhook('gmail')}
-                disabled={setupLoading.gmail}
-                size="sm"
-              >
-                {setupLoading.gmail && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                Set Up
-              </Button>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Clock className="h-4 w-4" />
+                  Setting up...
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => recreateWebhook('gmail')}
+                  className="ml-2"
+                >
+                  Setup Now
+                </Button>
+              </div>
             )}
           </div>
         </div>
@@ -227,7 +245,11 @@ export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
             <div>
               <h4 className="font-medium">Calendar Sync</h4>
               <p className="text-sm text-muted-foreground">
-                Get notified when calendar events change
+                {calendarWebhook 
+                  ? "Real-time calendar notifications are active" 
+                  : isProduction 
+                    ? "Automatically configured on login"
+                    : "Available in production only"}
               </p>
               {calendarWebhook && (
                 <div className="flex items-center gap-2 mt-1">
@@ -241,23 +263,47 @@ export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
           </div>
           <div className="flex items-center gap-2">
             {calendarWebhook ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => deleteWebhook(calendarWebhook.channelId, 'calendar')}
-                className="text-red-600 hover:text-red-700"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => recreateWebhook('calendar')}
+                  className="text-blue-600 hover:text-blue-700"
+                >
+                  Recreate
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => deleteWebhook(calendarWebhook.channelId, 'calendar')}
+                  className="text-red-600 hover:text-red-700"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
             ) : (
-              <Button
-                onClick={() => setupWebhook('calendar')}
-                disabled={setupLoading.calendar}
-                size="sm"
-              >
-                {setupLoading.calendar && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                Set Up
-              </Button>
+              <div className="flex items-center gap-2">
+                {isProduction ? (
+                  <>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Clock className="h-4 w-4" />
+                      Setting up...
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => recreateWebhook('calendar')}
+                      className="ml-2"
+                    >
+                      Setup Now
+                    </Button>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span>Requires production environment</span>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -274,20 +320,13 @@ export function WebhookSettings({ isConnected }: WebhookSettingsProps) {
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={fetchWebhooks}
+              onClick={() => fetchWebhooks(true)}
               className="w-full"
             >
               Refresh Status
             </Button>
           </div>
         )}
-
-        <div className="text-xs text-muted-foreground space-y-1">
-          <p>• Webhooks enable real-time synchronization of your Gmail and Calendar data</p>
-          <p>• Your pgvector database will be updated automatically when new emails arrive or events change</p>
-          <p>• Webhooks will automatically renew before they expire</p>
-        </div>
-      </CardContent>
-    </Card>
+    </div>
   );
 }

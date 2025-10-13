@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Settings, Check, X, Calendar, Mail, Users, RefreshCw } from 'lucide-react'
+import { Settings, Check, X, Calendar, Mail, Users, RefreshCw, Webhook } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { WebhookSettings } from "@/components/WebhookSettings"
+import { cn } from "@/lib/utils"
 
 interface SyncStatus {
   gmail: {
@@ -33,7 +34,10 @@ interface SettingsDialogProps {
   children: React.ReactNode
 }
 
+type TabType = 'general' | 'webhooks'
+
 export function SettingsDialog({ children }: SettingsDialogProps) {
+  const [activeTab, setActiveTab] = useState<TabType>('general')
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({
     gmail: { connected: false, lastSync: null, emailCount: 0 },
     hubspot: { connected: false, lastSync: null, contactCount: 0, noteCount: 0 },
@@ -93,169 +97,239 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
 
+  const tabs = [
+    {
+      id: 'general' as TabType,
+      label: 'General',
+      icon: Settings,
+      description: 'Manage sync settings and connections'
+    },
+    {
+      id: 'webhooks' as TabType,
+      label: 'Webhooks',
+      icon: Webhook,
+      description: 'Real-time synchronization settings'
+    }
+  ]
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'general':
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-lg font-semibold">General Settings</h2>
+                <p className="text-sm text-gray-500">Manage your sync connections and data</p>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => fetchSyncStatus(true)}
+                disabled={isRefreshing}
+                className="h-8 w-8 p-0"
+              >
+                <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-red-50 rounded-lg">
+                    <Mail className="h-5 w-5 text-red-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-medium">Gmail</h3>
+                    <p className="text-sm text-gray-500">{syncStatus.gmail.emailCount} emails synced</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {syncStatus.gmail.connected ? (
+                    <div className="flex items-center gap-1 text-green-600">
+                      <Check className="h-4 w-4" />
+                      <span className="text-sm">Connected</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-gray-500">
+                      <X className="h-4 w-4" />
+                      <span className="text-sm">Not connected</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-500">
+                  Last sync: {formatLastSync(syncStatus.gmail.lastSync)}
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleSync('gmail')}
+                  disabled={isLoading === 'gmail' || !syncStatus.gmail.connected}
+                >
+                  {isLoading === 'gmail' ? 'Syncing...' : syncStatus.gmail.connected ? 'Sync Now' : 'Not Connected'}
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-orange-50 rounded-lg">
+                    <img 
+                      src="/assets/hubspot_logo.png" 
+                      alt="HubSpot" 
+                      className="h-5 w-5"
+                    />
+                  </div>
+                  <div>
+                    <h3 className="font-medium">HubSpot</h3>
+                    <p className="text-sm text-gray-500">
+                      {syncStatus.hubspot.contactCount} contacts, {syncStatus.hubspot.noteCount} notes
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {syncStatus.hubspot.connected ? (
+                    <div className="flex items-center gap-1 text-green-600">
+                      <Check className="h-4 w-4" />
+                      <span className="text-sm">Connected</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-gray-500">
+                      <X className="h-4 w-4" />
+                      <span className="text-sm">Not connected</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-500">
+                  Last sync: {formatLastSync(syncStatus.hubspot.lastSync)}
+                </p>
+                {syncStatus.hubspot.connected ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleSync('hubspot')}
+                    disabled={isLoading === 'hubspot'}
+                  >
+                    {isLoading === 'hubspot' ? 'Syncing...' : 'Sync Now'}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => window.location.href = '/api/hubspot/oauth'}
+                  >
+                    Connect HubSpot
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-50 rounded-lg">
+                    <Calendar className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-medium">Google Calendar</h3>
+                    <p className="text-sm text-gray-500">{syncStatus.calendar.eventCount} events synced</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {syncStatus.calendar.connected ? (
+                    <div className="flex items-center gap-1 text-green-600">
+                      <Check className="h-4 w-4" />
+                      <span className="text-sm">Connected</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-gray-500">
+                      <X className="h-4 w-4" />
+                      <span className="text-sm">Not connected</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-500">
+                  Last sync: {formatLastSync(syncStatus.calendar.lastSync)}
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleSync('calendar')}
+                  disabled={isLoading === 'calendar' || !syncStatus.calendar.connected}
+                >
+                  {isLoading === 'calendar' ? 'Syncing...' : syncStatus.calendar.connected ? 'Sync Now' : 'Not Connected'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )
+      case 'webhooks':
+        return (
+          <div className="space-y-4">
+            <div className="mb-6">
+              <h2 className="text-lg font-semibold">Webhook Settings</h2>
+              <p className="text-sm text-gray-500">Configure real-time synchronization</p>
+            </div>
+            <WebhookSettings isConnected={syncStatus.gmail.connected} />
+          </div>
+        )
+      default:
+        return null
+    }
+  }
+
   return (
     <Dialog>
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px] rounded-xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+      <DialogContent className="sm:max-w-[800px] max-h-[90vh] p-0 rounded-xl">
+        <div className="flex h-full">
+          {/* Left sidebar with tabs */}
+          <div className="w-60 border-r bg-gray-50/50 p-4">
+            <div className="flex items-center gap-2 mb-6 px-2">
               <Settings className="h-5 w-5" />
-              Sync Settings
+              <span className="font-semibold">Settings</span>
             </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => fetchSyncStatus(true)}
-              disabled={isRefreshing}
-              className="h-8 w-8 p-0"
-            >
-              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            </Button>
-          </DialogTitle>
-        </DialogHeader>
-        
-        <div className="space-y-4">
-          <div className="rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-red-50 rounded-lg">
-                  <Mail className="h-5 w-5 text-red-600" />
-                </div>
-                <div>
-                  <h3 className="font-medium">Gmail</h3>
-                  <p className="text-sm text-gray-500">{syncStatus.gmail.emailCount} emails synced</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {syncStatus.gmail.connected ? (
-                  <div className="flex items-center gap-1 text-green-600">
-                    <Check className="h-4 w-4" />
-                    <span className="text-sm">Connected</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1 text-gray-500">
-                    <X className="h-4 w-4" />
-                    <span className="text-sm">Not connected</span>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-gray-500">
-                Last sync: {formatLastSync(syncStatus.gmail.lastSync)}
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleSync('gmail')}
-                disabled={isLoading === 'gmail' || !syncStatus.gmail.connected}
-              >
-                {isLoading === 'gmail' ? 'Syncing...' : syncStatus.gmail.connected ? 'Sync Now' : 'Not Connected'}
-              </Button>
-            </div>
+            
+            <nav className="space-y-1">
+              {tabs.map((tab) => {
+                const Icon = tab.icon
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2 text-left rounded-lg transition-colors",
+                      activeTab === tab.id
+                        ? "bg-white border border-gray-200 shadow-sm text-gray-900"
+                        : "text-gray-600 hover:bg-gray-100"
+                    )}
+                  >
+                    <Icon className="h-4 w-4 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm">{tab.label}</div>
+                      <div className="text-xs text-gray-500 truncate">{tab.description}</div>
+                    </div>
+                  </button>
+                )
+              })}
+            </nav>
           </div>
 
-          <div className="rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-orange-50 rounded-lg">
-                  <img 
-                    src="/assets/hubspot_logo.png" 
-                    alt="HubSpot" 
-                    className="h-5 w-5"
-                  />
-                </div>
-                <div>
-                  <h3 className="font-medium">HubSpot</h3>
-                  <p className="text-sm text-gray-500">
-                    {syncStatus.hubspot.contactCount} contacts, {syncStatus.hubspot.noteCount} notes
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {syncStatus.hubspot.connected ? (
-                  <div className="flex items-center gap-1 text-green-600">
-                    <Check className="h-4 w-4" />
-                    <span className="text-sm">Connected</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1 text-gray-500">
-                    <X className="h-4 w-4" />
-                    <span className="text-sm">Not connected</span>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-gray-500">
-                Last sync: {formatLastSync(syncStatus.hubspot.lastSync)}
-              </p>
-              {syncStatus.hubspot.connected ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleSync('hubspot')}
-                  disabled={isLoading === 'hubspot'}
-                >
-                  {isLoading === 'hubspot' ? 'Syncing...' : 'Sync Now'}
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => window.location.href = '/api/hubspot/oauth'}
-                >
-                  Connect HubSpot
-                </Button>
-              )}
+          {/* Right content area */}
+          <div className="flex-1 overflow-auto">
+            <div className="p-6">
+              {renderTabContent()}
             </div>
           </div>
-
-          <div className="rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-50 rounded-lg">
-                  <Calendar className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="font-medium">Google Calendar</h3>
-                  <p className="text-sm text-gray-500">{syncStatus.calendar.eventCount} events synced</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {syncStatus.calendar.connected ? (
-                  <div className="flex items-center gap-1 text-green-600">
-                    <Check className="h-4 w-4" />
-                    <span className="text-sm">Connected</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1 text-gray-500">
-                    <X className="h-4 w-4" />
-                    <span className="text-sm">Not connected</span>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-gray-500">
-                Last sync: {formatLastSync(syncStatus.calendar.lastSync)}
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleSync('calendar')}
-                disabled={isLoading === 'calendar' || !syncStatus.calendar.connected}
-              >
-                {isLoading === 'calendar' ? 'Syncing...' : syncStatus.calendar.connected ? 'Sync Now' : 'Not Connected'}
-              </Button>
-            </div>
-          </div>
-
-          {/* Add WebhookSettings component */}
-          <WebhookSettings isConnected={syncStatus.gmail.connected} />
         </div>
       </DialogContent>
     </Dialog>
