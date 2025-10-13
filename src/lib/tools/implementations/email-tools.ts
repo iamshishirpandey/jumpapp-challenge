@@ -86,6 +86,23 @@ export async function sendEmail(parameters: Record<string, any>, userId: string)
     })
 
     console.log('Email sent successfully, message ID:', response.data.id)
+    
+    // Trigger instant sync to update pgvector with the sent email
+    try {
+      const syncResponse = await fetch(`${process.env.NEXTAUTH_URL}/api/sync/instant`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (syncResponse.ok) {
+        console.log('Instant sync triggered after email send');
+      }
+    } catch (syncError) {
+      console.log('Instant sync failed, but email was sent successfully');
+    }
+    
     return {
       messageId: response.data.id,
       success: true,
@@ -181,7 +198,9 @@ export async function searchEmails(parameters: Record<string, any>, userId: stri
       userId,
       searchQuery,
       limit,
-      0.3 // Lower threshold for broader search
+      0.3, // Lower threshold for broader search
+      undefined, // No chat history
+      ['email'] // Filter for email documents only
     )
 
     if (!results || results.length === 0) {
