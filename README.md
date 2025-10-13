@@ -4,6 +4,7 @@ An intelligent CRM assistant that connects Gmail, Google Calendar, and HubSpot t
 
 ## 📋 Table of Contents
 - [Features](#features)
+- [Screenshots](#screenshots)
 - [Requirements Fulfilled](#requirements-fulfilled)
 - [Architecture](#architecture)
 - [System Flow](#system-flow)
@@ -34,6 +35,61 @@ An intelligent CRM assistant that connects Gmail, Google Calendar, and HubSpot t
 - **Ongoing Instructions**: Persistent rules that execute across sessions
 - **Multi-step Workflows**: Handle complex scenarios with waiting periods
 - **Edge Case Handling**: LLM-powered flexible response to unexpected situations
+
+## 📸 Screenshots
+
+### Login & Authentication
+<img src="screenshots/login.png" alt="Google OAuth Login" width="600"/>
+
+*Google OAuth login with email and calendar permissions*
+
+### Main Interface
+<img src="screenshots/homescreen.png" alt="Main Chat Interface" width="600"/>
+
+*ChatGPT-like interface for natural language interactions*
+
+<img src="screenshots/mobileview_chat.png" alt="Mobile Chat View" width="300"/>
+
+*Mobile-responsive chat interface*
+
+### Integrations Setup
+<img src="screenshots/hubspot_connected.png" alt="HubSpot Integration" width="600"/>
+
+*HubSpot CRM successfully connected*
+
+<img src="screenshots/gmail_sync.png" alt="Gmail Synchronization" width="600"/>
+
+*Gmail email synchronization and RAG processing*
+
+<img src="screenshots/webhooks_config.png" alt="Webhook Configuration" width="600"/>
+
+*Webhook endpoints configured for real-time automation*
+
+### AI Processing & Responses
+<img src="screenshots/thinking.png" alt="AI Processing" width="600"/>
+
+*AI agent processing user requests with RAG context*
+
+<img src="screenshots/sample_request1.png" alt="Sample Query Response" width="600"/>
+
+*Example of contextual query: "Who mentioned baseball?"*
+
+<img src="screenshots/prompt2.png" alt="Complex Request Handling" width="600"/>
+
+*Complex multi-step task processing*
+
+### Use Cases & Automation
+<img src="screenshots/calendar_usecase.png" alt="Calendar Integration" width="600"/>
+
+*Calendar integration for appointment scheduling*
+
+<img src="screenshots/appointment_reminder.png" alt="Appointment Automation" width="600"/>
+
+*Automated appointment reminders and follow-ups*
+
+<img src="screenshots/hubspot_integration.png" alt="HubSpot Automation" width="600"/>
+
+*HubSpot contact management and automated workflows*
 
 ## ✅ Requirements Fulfilled
 
