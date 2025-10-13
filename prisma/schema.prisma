@@ -222,6 +222,7 @@ model Message {
   chatId    String
   role      String
   content   String   @db.Text
+  metadata  Json?    // Store sources, email cards, tools used, etc.
   createdAt DateTime @default(now())
   
   chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)

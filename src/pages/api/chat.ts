@@ -132,6 +132,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(404).json({ error: 'User not found' });
       }
 
+      // Save the user message to database
+      let savedUserMessage;
+      if (chatId && chatId !== 'new') {
+        try {
+          savedUserMessage = await prisma.message.create({
+            data: {
+              chatId,
+              role: 'user',
+              content: message,
+            },
+          });
+          
+          // Update chat timestamp
+          await prisma.chat.update({
+            where: { id: chatId },
+            data: { updatedAt: new Date() },
+          });
+        } catch (error) {
+          console.error('Error saving user message:', error);
+        }
+      }
+
       const embeddingService = new EmbeddingService();
       const llmService = new LLMService();
 
@@ -257,23 +279,50 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Get enriched results for card display from relevantDocuments
         const enrichedResults = await getEnrichedResults(ragResult.relevantDocuments || []);
 
+        const emailCards = emailTools.map(tool => ({
+          type: 'email_sent',
+          messageId: tool.result.messageId,
+          to: response.toolCalls!.find(tc => tc.name === 'send_email')?.parameters.to,
+          subject: response.toolCalls!.find(tc => tc.name === 'send_email')?.parameters.subject,
+          body: response.toolCalls!.find(tc => tc.name === 'send_email')?.parameters.body,
+          timestamp: new Date().toISOString()
+        }));
+
+        const finalMessageText = finalMessage || 'Tasks completed successfully.';
+
+        // Save assistant response to database
+        if (chatId && chatId !== 'new') {
+          try {
+            await prisma.message.create({
+              data: {
+                chatId,
+                role: 'assistant',
+                content: finalMessageText,
+                metadata: {
+                  sources: enrichedResults,
+                  emailCards: emailCards,
+                  toolsUsed: response.toolCalls,
+                  toolResults: processedResults,
+                  relevantDocuments: ragResult.relevantDocuments,
+                  resultsCount: enrichedResults.length
+                }
+              },
+            });
+          } catch (error) {
+            console.error('Error saving assistant message:', error);
+          }
+        }
+
         return res.status(200).json({
           success: true,
-          response: finalMessage || 'Tasks completed successfully.',
+          response: finalMessageText,
           sources: enrichedResults, // Put enriched results in sources for card display
           results: enrichedResults,
           resultsCount: enrichedResults.length,
           toolsUsed: response.toolCalls,
           toolResults: processedResults,
           relevantDocuments: ragResult.relevantDocuments,
-          emailCards: emailTools.map(tool => ({
-            type: 'email_sent',
-            messageId: tool.result.messageId,
-            to: response.toolCalls!.find(tc => tc.name === 'send_email')?.parameters.to,
-            subject: response.toolCalls!.find(tc => tc.name === 'send_email')?.parameters.subject,
-            body: response.toolCalls!.find(tc => tc.name === 'send_email')?.parameters.body,
-            timestamp: new Date().toISOString()
-          }))
+          emailCards: emailCards
         });
       }
 
@@ -287,6 +336,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Get enriched results for card display from relevantDocuments (which contains the pgvector results)
       const enrichedResults = await getEnrichedResults(ragResult.relevantDocuments || []);
+
+      // Save assistant response to database
+      if (chatId && chatId !== 'new') {
+        try {
+          await prisma.message.create({
+            data: {
+              chatId,
+              role: 'assistant',
+              content: finalResponse,
+              metadata: {
+                sources: enrichedResults,
+                relevantDocuments: ragResult.relevantDocuments,
+                resultsCount: enrichedResults.length
+              }
+            },
+          });
+        } catch (error) {
+          console.error('Error saving assistant message:', error);
+        }
+      }
 
       return res.status(200).json({
         success: true,

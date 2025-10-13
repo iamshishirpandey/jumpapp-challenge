@@ -168,9 +168,20 @@ const ChatPage = () => {
       
       if (response.ok) {
         setCurrentChat(data)
-        setMessages(data.messages || [])
+        // Convert database messages to frontend format
+        const formattedMessages = (data.messages || []).map((msg: any) => ({
+          id: msg.id,
+          content: msg.content,
+          role: msg.role,
+          createdAt: new Date(msg.createdAt),
+          sources: msg.metadata?.sources || [],
+          emailCards: msg.metadata?.emailCards || [],
+          toolsUsed: msg.metadata?.toolsUsed || []
+        }))
+        setMessages(formattedMessages)
       }
     } catch (error) {
+      console.error('Error loading chat messages:', error)
     }
   }
 
