@@ -410,7 +410,12 @@ const ChatPage = () => {
   }
 
   if (!user) {
-    return null
+    router.push('/login')
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-lg">Redirecting to login...</div>
+      </div>
+    )
   }
 
   return (
