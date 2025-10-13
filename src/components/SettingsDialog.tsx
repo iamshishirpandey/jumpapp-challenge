@@ -134,8 +134,8 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
             </div>
 
             <div className="rounded-lg border border-gray-200 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
+                <div className="flex items-center gap-3 flex-1">
                   <div className="p-2 bg-red-50 rounded-lg">
                     <Mail className="h-5 w-5 text-red-600" />
                   </div>
@@ -158,7 +158,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
                   )}
                 </div>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <p className="text-xs text-gray-500">
                   Last sync: {formatLastSync(syncStatus.gmail.lastSync)}
                 </p>
@@ -167,6 +167,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
                   variant="outline"
                   onClick={() => handleSync('gmail')}
                   disabled={isLoading === 'gmail' || !syncStatus.gmail.connected}
+                  className="w-full sm:w-auto"
                 >
                   {isLoading === 'gmail' ? 'Syncing...' : syncStatus.gmail.connected ? 'Sync Now' : 'Not Connected'}
                 </Button>
@@ -174,8 +175,8 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
             </div>
 
             <div className="rounded-lg border border-gray-200 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
+                <div className="flex items-center gap-3 flex-1">
                   <div className="p-2 bg-orange-50 rounded-lg">
                     <img 
                       src="/assets/hubspot_logo.png" 
@@ -204,7 +205,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
                   )}
                 </div>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <p className="text-xs text-gray-500">
                   Last sync: {formatLastSync(syncStatus.hubspot.lastSync)}
                 </p>
@@ -214,6 +215,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
                     variant="outline"
                     onClick={() => handleSync('hubspot')}
                     disabled={isLoading === 'hubspot'}
+                    className="w-full sm:w-auto"
                   >
                     {isLoading === 'hubspot' ? 'Syncing...' : 'Sync Now'}
                   </Button>
@@ -222,6 +224,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
                     size="sm"
                     variant="outline"
                     onClick={() => window.location.href = '/api/hubspot/oauth'}
+                    className="w-full sm:w-auto"
                   >
                     Connect HubSpot
                   </Button>
@@ -230,8 +233,8 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
             </div>
 
             <div className="rounded-lg border border-gray-200 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
+                <div className="flex items-center gap-3 flex-1">
                   <div className="p-2 bg-blue-50 rounded-lg">
                     <Calendar className="h-5 w-5 text-blue-600" />
                   </div>
@@ -254,7 +257,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
                   )}
                 </div>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <p className="text-xs text-gray-500">
                   Last sync: {formatLastSync(syncStatus.calendar.lastSync)}
                 </p>
@@ -263,6 +266,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
                   variant="outline"
                   onClick={() => handleSync('calendar')}
                   disabled={isLoading === 'calendar' || !syncStatus.calendar.connected}
+                  className="w-full sm:w-auto"
                 >
                   {isLoading === 'calendar' ? 'Syncing...' : syncStatus.calendar.connected ? 'Sync Now' : 'Not Connected'}
                 </Button>
@@ -290,10 +294,39 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[800px] max-h-[90vh] p-0 rounded-xl">
-        <div className="flex h-full">
-          {/* Left sidebar with tabs */}
-          <div className="w-60 border-r bg-gray-50/50 p-4">
+      <DialogContent className="w-full max-w-[95vw] sm:max-w-[800px] max-h-[90vh] p-0 rounded-xl">
+        <div className="flex flex-col sm:flex-row h-full">
+          {/* Mobile header with tabs */}
+          <div className="sm:hidden border-b bg-gray-50/50 p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Settings className="h-5 w-5" />
+              <span className="font-semibold">Settings</span>
+            </div>
+            
+            <nav className="flex gap-2 overflow-x-auto">
+              {tabs.map((tab) => {
+                const Icon = tab.icon
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-2 text-left rounded-lg transition-colors whitespace-nowrap flex-shrink-0",
+                      activeTab === tab.id
+                        ? "bg-white border border-gray-200 shadow-sm text-gray-900"
+                        : "text-gray-600 hover:bg-gray-100"
+                    )}
+                  >
+                    <Icon className="h-4 w-4 flex-shrink-0" />
+                    <div className="font-medium text-sm">{tab.label}</div>
+                  </button>
+                )
+              })}
+            </nav>
+          </div>
+
+          {/* Desktop sidebar with tabs */}
+          <div className="hidden sm:block w-60 border-r bg-gray-50/50 p-4">
             <div className="flex items-center gap-2 mb-6 px-2">
               <Settings className="h-5 w-5" />
               <span className="font-semibold">Settings</span>
@@ -324,9 +357,9 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
             </nav>
           </div>
 
-          {/* Right content area */}
+          {/* Content area */}
           <div className="flex-1 overflow-auto">
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               {renderTabContent()}
             </div>
           </div>
