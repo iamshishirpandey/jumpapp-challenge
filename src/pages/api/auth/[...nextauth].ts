@@ -3,9 +3,7 @@ import GoogleProvider from 'next-auth/providers/google'
 import { NextAuthOptions } from 'next-auth'
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import { prisma } from '@/lib/prisma'
-import { GmailService } from '@/lib/services/gmail'
-import { CalendarService } from '@/lib/services/calendar'
-import { EmbeddingService } from '@/lib/services/embeddings'
+import { SyncManager } from '@/lib/services/sync-manager'
 import { WebhookService } from '@/lib/services/webhook'
 
 export const authOptions: NextAuthOptions = {
@@ -111,50 +109,21 @@ export const authOptions: NextAuthOptions = {
           if (account?.provider === 'google' && account.refresh_token) {
             setImmediate(async () => {
               try {
-                const embeddingService = new EmbeddingService()
                 const webhookService = new WebhookService(account.refresh_token!)
                 
-                try {
-                  const gmailService = new GmailService(account.refresh_token!)
-                  const existingEmailCount = await prisma.email.count({
-                    where: { userId: updatedUser.id }
-                  })
-                  
-                  if (existingEmailCount === 0) {
-                    const emails = await gmailService.fetchEmails(updatedUser.id, 'newer_than:30d', 50)
-                    await Promise.allSettled(
-                      emails.map(email => embeddingService.processEmailForRAG(updatedUser.id, email))
-                    )
-                  }
-                } catch (gmailError) {}
+                // Check if this is first-time sync
+                const existingDocCount = await prisma.document.count({
+                  where: { userId: updatedUser.id }
+                })
                 
-                try {
-                  const calendarService = new CalendarService(account.refresh_token!)
-                  const existingEventCount = await prisma.calendarEvent.count({
-                    where: { userId: updatedUser.id }
-                  })
-                  
-                  if (existingEventCount === 0) {
-                    const threeMonthsAgo = new Date()
-                    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
-                    
-                    const threeMonthsAhead = new Date()
-                    threeMonthsAhead.setMonth(threeMonthsAhead.getMonth() + 3)
-                    
-                    const events = await calendarService.fetchEvents(
-                      updatedUser.id, 
-                      'primary', 
-                      threeMonthsAgo, 
-                      threeMonthsAhead, 
-                      50
-                    )
-                    
-                    await Promise.allSettled(
-                      events.map(event => embeddingService.processEventForRAG(updatedUser.id, event))
-                    )
-                  }
-                } catch (calendarError) {}
+                if (existingDocCount === 0) {
+                  // Start background sync for first-time users
+                  const syncManager = new SyncManager()
+                  syncManager.syncAll(updatedUser.id, account.refresh_token!, updatedUser.hubspotRefreshToken || undefined)
+                    .catch(error => console.error('Background sync error:', error))
+                }
                 
+                // Setup webhooks
                 try {
                   const existingWebhooks = await webhookService.getUserWebhookSubscriptions(updatedUser.id)
                   const hasGmailWebhook = existingWebhooks.some(w => w.resourceType === 'gmail' && w.isActive)
@@ -167,8 +136,12 @@ export const authOptions: NextAuthOptions = {
                   if (!hasCalendarWebhook && process.env.NODE_ENV === 'production') {
                     await webhookService.setupCalendarWebhook(updatedUser.id, 'primary')
                   }
-                } catch (webhookError) {}
-              } catch (syncError) {}
+                } catch (webhookError) {
+                  console.error('Webhook setup error:', webhookError)
+                }
+              } catch (syncError) {
+                console.error('Auth sync error:', syncError)
+              }
             })
           }
         }
