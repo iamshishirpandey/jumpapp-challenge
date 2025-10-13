@@ -258,6 +258,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         aiResponse = ragResponse.response;
         
         if (ragResponse.sources && ragResponse.sources.length > 0) {
+          // Save assistant message with metadata
+          if (chatId) {
+            try {
+              await prisma.message.create({
+                data: {
+                  chatId,
+                  role: 'assistant',
+                  content: aiResponse,
+                  metadata: {
+                    sources: ragResponse.sources,
+                    toolsUsed: ragResponse.toolsUsed,
+                    resultsCount: enrichedResults.length
+                  },
+                },
+              });
+            } catch (error) {
+              console.error('Error saving assistant message:', error);
+            }
+          }
+          
           return res.status(200).json({
             success: true,
             results: enrichedResults,
@@ -283,9 +303,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             chatId,
             role: 'assistant',
             content: aiResponse,
+            metadata: {
+              sources: enrichedResults.map(doc => ({
+                id: doc.id,
+                sourceType: doc.sourceType,
+                title: doc.title,
+                similarity: doc.similarity,
+                metadata: doc.metadata || {},
+                preview: doc.content ? doc.content.substring(0, 200) + '...' : '',
+                sourceId: doc.sourceId,
+                gmailId: doc.sourceType === 'email' ? doc.sourceId : null
+              })),
+              resultsCount: enrichedResults.length
+            },
           },
         });
       } catch (error) {
+        console.error('Error saving fallback assistant message:', error);
       }
     }
 
