@@ -1,4 +1,6 @@
 import { prisma } from '@/lib/prisma'
+import { LLMService } from '@/lib/services/llm'
+import { sendEmail } from './email-tools'
 
 async function getHubSpotClient(userId: string) {
   console.log('🔧 Getting HubSpot client for userId:', userId)
@@ -175,11 +177,63 @@ export async function createHubSpotContact(parameters: Record<string, any>, user
       )
 
       console.log('🔧 HubSpot contact created successfully:', result.id)
-      return {
-        contactId: result.id,
-        success: true,
-        message: `Contact created successfully for ${email}`,
-        properties: result.properties
+      
+      // Send thank you email with LLM-generated message
+      try {
+        const llmService = new LLMService()
+        const contactName = firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || 'there'
+        
+        // Get user information for signature
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { 
+            email: true,
+            name: true
+          }
+        })
+        
+        const userName = user?.name || 'Your AI Assistant'
+        const userEmail = user?.email || ''
+        
+        const emailPrompt = `Generate a warm, professional thank you email for a new client. The contact's name is ${contactName}${company ? ` from ${company}` : ''}. 
+        
+        The email should:
+        - Thank them for becoming a client
+        - Be warm but professional 
+        - Be concise (2-3 short paragraphs)
+        - Express appreciation for their trust
+        - Mention that we look forward to working together
+        - End with just "Best regards," followed by the name "${userName}" and email "${userEmail}" on separate lines
+        - Do NOT include placeholder text like [Your Company Name], [Your Title], etc.
+        
+        Return only the email body content, no subject line.`
+        
+        const emailBody = await llmService.generateSimpleText(emailPrompt)
+        const subject = `Thank you for choosing us, ${contactName}!`
+        
+        console.log('🔧 Sending thank you email to:', email)
+        await sendEmail({
+          to: email,
+          subject: subject,
+          body: emailBody
+        }, userId)
+        
+        console.log('🔧 Thank you email sent successfully')
+        
+        return {
+          contactId: result.id,
+          success: true,
+          message: `Contact created successfully for ${email} and thank you email sent`,
+          properties: result.properties
+        }
+      } catch (emailError) {
+        console.error('🔧 Failed to send thank you email:', emailError)
+        return {
+          contactId: result.id,
+          success: true,
+          message: `Contact created successfully for ${email}, but failed to send thank you email: ${emailError instanceof Error ? emailError.message : 'Unknown error'}`,
+          properties: result.properties
+        }
       }
     } catch (hubspotError: any) {
       // Handle "Contact already exists" case
@@ -191,7 +245,7 @@ export async function createHubSpotContact(parameters: Record<string, any>, user
         return {
           contactId: existingId,
           success: true,
-          message: `Contact ${email} already exists in HubSpot (ID: ${existingId})`,
+          message: `Contact ${email} already exists in HubSpot (ID: ${existingId}). No thank you email sent for existing contact.`,
           alreadyExists: true
         }
       }

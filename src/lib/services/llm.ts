@@ -162,6 +162,21 @@ export class LLMService {
     }
   }
 
+  async generateSimpleText(prompt: string): Promise<string> {
+    try {
+      const model = genAI.getGenerativeModel({ 
+        model: 'gemini-2.5-pro'
+      })
+
+      const result = await model.generateContent(prompt)
+      const response = result.response
+      return response.text() || 'Unable to generate response'
+    } catch (error) {
+      console.error('Simple text generation error:', error)
+      throw new Error(`Failed to generate text: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
   private buildSystemInstruction(ragSources?: any[]): string {
     let systemContent = `You are an AI assistant that helps users manage their business relationships and tasks. You have access to their Gmail emails, Google Calendar events, and HubSpot CRM data.
 
