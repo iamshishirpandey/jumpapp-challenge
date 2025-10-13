@@ -116,20 +116,43 @@ export const authOptions: NextAuthOptions = {
                 
                 try {
                   const gmailService = new GmailService(account.refresh_token!)
-                  const emails = await gmailService.fetchEmails(updatedUser.id, 'newer_than:7d', 50)
+                  const existingEmailCount = await prisma.email.count({
+                    where: { userId: updatedUser.id }
+                  })
                   
-                  await Promise.allSettled(
-                    emails.map(email => embeddingService.processEmailForRAG(updatedUser.id, email))
-                  )
+                  if (existingEmailCount === 0) {
+                    const emails = await gmailService.fetchEmails(updatedUser.id, 'newer_than:30d', 50)
+                    await Promise.allSettled(
+                      emails.map(email => embeddingService.processEmailForRAG(updatedUser.id, email))
+                    )
+                  }
                 } catch (gmailError) {}
                 
                 try {
                   const calendarService = new CalendarService(account.refresh_token!)
-                  const events = await calendarService.fetchEvents(updatedUser.id)
+                  const existingEventCount = await prisma.calendarEvent.count({
+                    where: { userId: updatedUser.id }
+                  })
                   
-                  await Promise.allSettled(
-                    events.map(event => embeddingService.processEventForRAG(updatedUser.id, event))
-                  )
+                  if (existingEventCount === 0) {
+                    const threeMonthsAgo = new Date()
+                    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
+                    
+                    const threeMonthsAhead = new Date()
+                    threeMonthsAhead.setMonth(threeMonthsAhead.getMonth() + 3)
+                    
+                    const events = await calendarService.fetchEvents(
+                      updatedUser.id, 
+                      'primary', 
+                      threeMonthsAgo, 
+                      threeMonthsAhead, 
+                      50
+                    )
+                    
+                    await Promise.allSettled(
+                      events.map(event => embeddingService.processEventForRAG(updatedUser.id, event))
+                    )
+                  }
                 } catch (calendarError) {}
                 
                 try {
@@ -141,13 +164,10 @@ export const authOptions: NextAuthOptions = {
                     await webhookService.setupGmailWebhook(updatedUser.id)
                   }
                   
-                  // Only setup calendar webhook in production (webhooks need publicly accessible URL)
                   if (!hasCalendarWebhook && process.env.NODE_ENV === 'production') {
                     await webhookService.setupCalendarWebhook(updatedUser.id, 'primary')
                   }
-                } catch (webhookError) {
-                  console.error('Webhook setup error during login:', webhookError)
-                }
+                } catch (webhookError) {}
               } catch (syncError) {}
             })
           }

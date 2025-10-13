@@ -585,12 +585,31 @@ export class EmbeddingService {
         sourceTypeFilter = ['calendar_event'];
       }
       
-      // Use higher threshold for more precise results
+      const totalDocuments = await prisma.document.count({
+        where: { userId }
+      });
+      
+      if (totalDocuments === 0) {
+        return {
+          response: "I don't have any synchronized data yet. Your data is being synced automatically in the background. Please wait a moment and try again, or check your Settings to ensure Gmail and Calendar are properly connected.",
+          sources: [],
+          relevantDocuments: []
+        };
+      }
+      
+      if (totalDocuments < 10) {
+        return {
+          response: `Your data sync is still in progress (${totalDocuments} documents synced so far). For better results, please wait for the initial sync to complete or try again in a few moments.`,
+          sources: [],
+          relevantDocuments: []
+        };
+      }
+      
       const relevantDocs = await this.searchSimilarDocuments(userId, query, 15, 0.3, chatHistory, sourceTypeFilter);
       
       if (!relevantDocs || relevantDocs.length === 0) {
         return {
-          response: "I don't have any relevant information in your synchronized data to answer that question. Please try syncing your Gmail, HubSpot, or Calendar data first.",
+          response: `I have ${totalDocuments} documents synced but couldn't find information specifically related to your query. Try rephrasing your question or asking about something more general from your emails, calendar, or contacts.`,
           sources: [],
           relevantDocuments: []
         };

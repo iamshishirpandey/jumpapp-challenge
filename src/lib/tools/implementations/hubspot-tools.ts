@@ -3,8 +3,6 @@ import { LLMService } from '@/lib/services/llm'
 import { sendEmail } from './email-tools'
 
 async function getHubSpotClient(userId: string) {
-  console.log('🔧 Getting HubSpot client for userId:', userId)
-  
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { 
@@ -14,20 +12,11 @@ async function getHubSpotClient(userId: string) {
     }
   })
 
-  console.log('🔧 User HubSpot status:', {
-    found: !!user,
-    hubspotConnected: user?.hubspotConnected,
-    hasRefreshToken: !!user?.hubspotRefreshToken,
-    refreshTokenLength: user?.hubspotRefreshToken?.length,
-    portalId: user?.hubspotPortalId
-  })
 
   if (!user?.hubspotConnected || !user.hubspotRefreshToken) {
     throw new Error('HubSpot integration not found or access token missing. Please connect your HubSpot account first using the Connect HubSpot button in Settings.')
   }
 
-  // Get fresh access token using refresh token
-  console.log('🔧 Refreshing HubSpot access token...')
   const accessToken = await refreshHubSpotToken(userId, user.hubspotRefreshToken)
 
   return {
@@ -38,7 +27,6 @@ async function getHubSpotClient(userId: string) {
 
 async function refreshHubSpotToken(userId: string, refreshToken: string): Promise<string> {
   try {
-    console.log('🔧 Refreshing HubSpot token for userId:', userId, 'refreshToken length:', refreshToken.length)
     
     const response = await fetch('https://api.hubapi.com/oauth/v1/token', {
       method: 'POST',
@@ -53,20 +41,14 @@ async function refreshHubSpotToken(userId: string, refreshToken: string): Promis
       }),
     })
 
-    console.log('🔧 HubSpot token refresh response status:', response.status)
-
     if (!response.ok) {
       const errorText = await response.text()
-      console.error('🔧 HubSpot token refresh failed:', errorText)
       throw new Error(`Failed to refresh HubSpot token: ${response.status} - ${errorText}`)
     }
 
     const tokenData = await response.json()
-    console.log('🔧 HubSpot token refresh successful, access token length:', tokenData.access_token?.length)
 
-    // Update the user with new refresh token if provided
     if (tokenData.refresh_token) {
-      console.log('🔧 Updating user with new refresh token')
       await prisma.user.update({
         where: { id: userId },
         data: {
@@ -78,7 +60,6 @@ async function refreshHubSpotToken(userId: string, refreshToken: string): Promis
 
     return tokenData.access_token
   } catch (error) {
-    console.error('🔧 Error refreshing HubSpot token:', error)
     throw error
   }
 }
@@ -105,7 +86,6 @@ export async function updateHubSpotContact(parameters: Record<string, any>, user
   const { contactId, email, firstName, lastName, company, phone, jobTitle, website } = parameters
   
   try {
-    console.log('🔧 Updating HubSpot contact:', contactId)
     
     const { accessToken } = await getHubSpotClient(userId)
     
@@ -137,7 +117,6 @@ export async function updateHubSpotContact(parameters: Record<string, any>, user
       properties: result.properties
     }
   } catch (error) {
-    console.error('🔧 HubSpot contact update error:', error)
     throw new Error(`Failed to update HubSpot contact: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
@@ -146,11 +125,7 @@ export async function createHubSpotContact(parameters: Record<string, any>, user
   const { email, firstName, lastName, company, phone, jobTitle, website } = parameters
   
   try {
-    console.log('🔧 Creating HubSpot contact for userId:', userId)
-    console.log('🔧 Contact parameters:', { email, firstName, lastName, company, phone, jobTitle, website })
-    
     const { accessToken } = await getHubSpotClient(userId)
-    console.log('🔧 Got HubSpot access token, length:', accessToken?.length)
     
     const contactData = {
       properties: {
@@ -163,8 +138,6 @@ export async function createHubSpotContact(parameters: Record<string, any>, user
         website
       }
     }
-
-    console.log('🔧 Sending HubSpot contact data:', contactData)
     
     try {
       const result = await hubspotRequest(
@@ -176,14 +149,10 @@ export async function createHubSpotContact(parameters: Record<string, any>, user
         accessToken
       )
 
-      console.log('🔧 HubSpot contact created successfully:', result.id)
-      
-      // Send thank you email with LLM-generated message
       try {
         const llmService = new LLMService()
         const contactName = firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || 'there'
         
-        // Get user information for signature
         const user = await prisma.user.findUnique({
           where: { id: userId },
           select: { 
@@ -211,14 +180,11 @@ export async function createHubSpotContact(parameters: Record<string, any>, user
         const emailBody = await llmService.generateSimpleText(emailPrompt)
         const subject = `Thank you for choosing us, ${contactName}!`
         
-        console.log('🔧 Sending thank you email to:', email)
         await sendEmail({
           to: email,
           subject: subject,
           body: emailBody
         }, userId)
-        
-        console.log('🔧 Thank you email sent successfully')
         
         return {
           contactId: result.id,
@@ -227,7 +193,6 @@ export async function createHubSpotContact(parameters: Record<string, any>, user
           properties: result.properties
         }
       } catch (emailError) {
-        console.error('🔧 Failed to send thank you email:', emailError)
         return {
           contactId: result.id,
           success: true,
@@ -236,12 +201,10 @@ export async function createHubSpotContact(parameters: Record<string, any>, user
         }
       }
     } catch (hubspotError: any) {
-      // Handle "Contact already exists" case
       if (hubspotError.message?.includes('409') && hubspotError.message?.includes('Contact already exists')) {
         const existingIdMatch = hubspotError.message.match(/Existing ID: (\d+)/)
         const existingId = existingIdMatch ? existingIdMatch[1] : 'unknown'
         
-        console.log('🔧 Contact already exists with ID:', existingId)
         return {
           contactId: existingId,
           success: true,
@@ -249,11 +212,9 @@ export async function createHubSpotContact(parameters: Record<string, any>, user
           alreadyExists: true
         }
       }
-      // Re-throw other errors
       throw hubspotError
     }
   } catch (error) {
-    console.error('🔧 HubSpot contact creation error:', error)
     throw new Error(`Failed to create HubSpot contact: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
