@@ -8,6 +8,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { WebhookSettings } from "@/components/WebhookSettings"
 
 interface SyncStatus {
   gmail: {
@@ -252,6 +253,9 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
               </Button>
             </div>
           </div>
+
+          {/* Add WebhookSettings component */}
+          <WebhookSettings isConnected={syncStatus.gmail.connected} />
         </div>
       </DialogContent>
     </Dialog>
