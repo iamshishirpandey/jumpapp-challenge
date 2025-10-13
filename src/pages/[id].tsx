@@ -657,6 +657,86 @@ const ChatPage = () => {
                         {message.sources && message.sources.length > 0 && (
                           <div className="mt-4">
                             {(() => {
+                              // Check if we have multiple calendar events
+                              const calendarEvents = message.sources.filter(source => 
+                                source.sourceType === 'calendar_event' &&
+                                // Filter out generic availability blocks and low-relevance events
+                                !source.title?.toLowerCase().includes('available') &&
+                                !source.title?.toLowerCase().includes('busy') &&
+                                !source.title?.toLowerCase().includes('out of office') &&
+                                source.similarity >= 0.4 // Only show high-relevance events
+                              );
+                              
+                              if (calendarEvents.length > 1) {
+                                // Show up to 3 calendar cards, sorted by similarity
+                                const eventsToShow = calendarEvents
+                                  .sort((a, b) => b.similarity - a.similarity)
+                                  .slice(0, 3);
+                                return (
+                                  <div className="space-y-4">
+                                    {eventsToShow.map((source, index) => {
+                                      const startDate = source.metadata?.startDateTime ? new Date(source.metadata.startDateTime) : null;
+                                      const endDate = source.metadata?.endDateTime ? new Date(source.metadata.endDateTime) : null;
+                                      const attendees = source.metadata?.attendees || [];
+                                      
+                                      return (
+                                        <div key={index} className="min-w-80 w-full md:w-auto">
+                                          {/* Date header */}
+                                          {startDate && (
+                                            <div className="text-left mb-2">
+                                              <div className="text-lg text-gray-900">
+                                                {startDate.getDate()} <span className="font-semibold">{startDate.toLocaleDateString('en-US', { weekday: 'long' })}</span>
+                                              </div>
+                                            </div>
+                                          )}
+                                          
+                                          {/* Time and title card */}
+                                          <div className="border border-gray-200 rounded-xl p-4">
+                                            {/* Time */}
+                                            {startDate && endDate && (
+                                              <div className="text-sm font-medium text-gray-600 mb-2">
+                                                {startDate.toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'})} – {endDate.toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'})}
+                                              </div>
+                                            )}
+                                            
+                                            {/* Meeting title */}
+                                            {source.title && (
+                                              <h4 className="text-base font-semibold text-gray-900 mb-3">{source.title}</h4>
+                                            )}
+                                            
+                                            {/* Attendee avatars */}
+                                            {attendees.length > 0 && (
+                                              <div className="flex -space-x-2">
+                                                {attendees.slice(0, 4).map((attendee: any, idx: number) => (
+                                                  <div 
+                                                    key={idx} 
+                                                    className="w-8 h-8 bg-gray-400 rounded-full flex items-center justify-center text-white text-sm font-medium border-2 border-white"
+                                                    title={attendee.displayName || attendee.email || 'Unknown'}
+                                                  >
+                                                    {(attendee.displayName || attendee.email || 'U').charAt(0).toUpperCase()}
+                                                  </div>
+                                                ))}
+                                                {attendees.length > 4 && (
+                                                  <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium border-2 border-white">
+                                                    +{attendees.length - 4}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                    {calendarEvents.length > 3 && (
+                                      <div className="text-sm text-gray-500 mt-2">
+                                        And {calendarEvents.length - 3} more meeting{calendarEvents.length - 3 !== 1 ? 's' : ''}...
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+                              
+                              // Original single source display logic
                               const primarySource = message.sources[0];
                               const sourceType = primarySource.sourceType;
                               
@@ -706,75 +786,49 @@ const ChatPage = () => {
                                 const attendees = primarySource.metadata?.attendees || [];
                                 
                                 return (
-                                  <div className="border border-gray-200 rounded-lg p-4 bg-white hover:shadow-sm transition-shadow">
-                                    <div className="flex items-start justify-between">
-                                      <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-3">
-                                          <Calendar className="h-5 w-5 text-blue-600" />
-                                          <span className="text-sm font-medium text-gray-700">Calendar Event</span>
-                                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                                            {Math.round((primarySource.similarity || 0) * 100)}% match
-                                          </span>
+                                  <div className="min-w-80 w-full md:w-auto">
+                                    {/* Date header */}
+                                    {startDate && (
+                                      <div className="text-left mb-2">
+                                        <div className="text-lg text-gray-900">
+                                          {startDate.getDate()} <span className="font-semibold">{startDate.toLocaleDateString('en-US', { weekday: 'long' })}</span>
                                         </div>
-                                        
-                                        {primarySource.title && (
-                                          <h4 className="text-lg font-semibold text-gray-900 mb-3">{primarySource.title}</h4>
-                                        )}
-                                        
-                                        <div className="space-y-2 mb-3">
-                                          {startDate && (
-                                            <div className="flex items-center gap-2">
-                                              <div className="text-xs font-medium text-gray-500 w-12">Start:</div>
-                                              <div className="text-sm text-gray-900">
-                                                {startDate.toLocaleDateString()} at {startDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                              </div>
-                                            </div>
-                                          )}
-                                          {endDate && (
-                                            <div className="flex items-center gap-2">
-                                              <div className="text-xs font-medium text-gray-500 w-12">End:</div>
-                                              <div className="text-sm text-gray-900">
-                                                {endDate.toLocaleDateString()} at {endDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                              </div>
-                                            </div>
-                                          )}
-                                          {primarySource.metadata?.location && (
-                                            <div className="flex items-center gap-2">
-                                              <div className="text-xs font-medium text-gray-500 w-12">Location:</div>
-                                              <div className="text-sm text-gray-900">{primarySource.metadata.location}</div>
-                                            </div>
-                                          )}
-                                        </div>
-                                        
-                                        {attendees.length > 0 && (
-                                          <div className="mb-3">
-                                            <div className="text-xs font-medium text-gray-500 mb-2">Attendees ({attendees.length}):</div>
-                                            <div className="flex flex-wrap gap-2">
-                                              {attendees.slice(0, 5).map((attendee: any, idx: number) => (
-                                                <div key={idx} className="flex items-center gap-2 bg-gray-50 rounded-full px-3 py-1">
-                                                  <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-medium">
-                                                    {(attendee.email || attendee.displayName || 'U').charAt(0).toUpperCase()}
-                                                  </div>
-                                                  <span className="text-xs text-gray-700">
-                                                    {attendee.displayName || attendee.email || 'Unknown'}
-                                                  </span>
-                                                </div>
-                                              ))}
-                                              {attendees.length > 5 && (
-                                                <div className="flex items-center gap-1 text-xs text-gray-500">
-                                                  +{attendees.length - 5} more
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-                                        )}
-                                        
-                                        {primarySource.preview && (
-                                          <div className="text-sm text-gray-600 bg-gray-50 rounded p-2">
-                                            {primarySource.preview}
-                                          </div>
-                                        )}
                                       </div>
+                                    )}
+                                    
+                                    {/* Time and title card */}
+                                    <div className="border border-gray-200 rounded-xl p-4">
+                                      {/* Time */}
+                                      {startDate && endDate && (
+                                        <div className="text-sm font-medium text-gray-600 mb-2">
+                                          {startDate.toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'})} – {endDate.toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'})}
+                                        </div>
+                                      )}
+                                      
+                                      {/* Meeting title */}
+                                      {primarySource.title && (
+                                        <h4 className="text-base font-semibold text-gray-900 mb-3">{primarySource.title}</h4>
+                                      )}
+                                      
+                                      {/* Attendee avatars */}
+                                      {attendees.length > 0 && (
+                                        <div className="flex -space-x-2">
+                                          {attendees.slice(0, 4).map((attendee: any, idx: number) => (
+                                            <div 
+                                              key={idx} 
+                                              className="w-8 h-8 bg-gray-400 rounded-full flex items-center justify-center text-white text-sm font-medium border-2 border-white"
+                                              title={attendee.displayName || attendee.email || 'Unknown'}
+                                            >
+                                              {(attendee.displayName || attendee.email || 'U').charAt(0).toUpperCase()}
+                                            </div>
+                                          ))}
+                                          {attendees.length > 4 && (
+                                            <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium border-2 border-white">
+                                              +{attendees.length - 4}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 );

@@ -586,7 +586,8 @@ export class EmbeddingService {
         sourceTypeFilter = ['calendar_event'];
       }
       
-      const relevantDocs = await this.searchSimilarDocuments(userId, query, 15, 0.25, chatHistory, sourceTypeFilter);
+      // Use higher threshold for more precise results
+      const relevantDocs = await this.searchSimilarDocuments(userId, query, 10, 0.4, chatHistory, sourceTypeFilter);
       
       if (!relevantDocs || relevantDocs.length === 0) {
         return {
@@ -596,7 +597,7 @@ export class EmbeddingService {
         };
       }
 
-      const highQualityDocs = (relevantDocs as any[]).filter(doc => doc.similarity >= 0.3);
+      const highQualityDocs = (relevantDocs as any[]).filter(doc => doc.similarity >= 0.4);
       
       if (highQualityDocs.length === 0) {
         return {
@@ -625,7 +626,7 @@ export class EmbeddingService {
       
       const sources = await Promise.all(
         sourceDocs
-          .filter(doc => doc.similarity >= 0.7)
+          .filter(doc => doc.similarity >= 0.4)
           .map(async (doc) => {
             const metadata = doc.metadata || {};
             let gmailId = null;
@@ -702,6 +703,17 @@ export class EmbeddingService {
         timeZoneName: 'short'
       });
 
+      // Check if this will result in calendar cards being shown
+      const calendarEventsCount = sourceDocs.filter(doc => 
+        doc.sourceType === 'calendar_event' &&
+        !doc.title?.toLowerCase().includes('available') &&
+        !doc.title?.toLowerCase().includes('busy') &&
+        !doc.title?.toLowerCase().includes('out of office') &&
+        doc.similarity >= 0.4
+      ).length;
+
+      const willShowCalendarCards = calendarEventsCount > 1;
+
       const prompt = `You are an AI assistant that helps users find information about their clients and contacts from their personal data including emails, HubSpot contacts, notes, and calendar events. Use the provided context to answer the user's question accurately and helpfully.
 
 Current Date and Time: ${currentDateTime}
@@ -714,6 +726,12 @@ User's question: ${query}
 Instructions:
 - Answer based ONLY on the information provided in the context above
 - Use the current date and time provided to understand temporal references like "today," "tomorrow," "yesterday," "this week," etc.
+- For calendar/meeting queries: Focus ONLY on events that directly match the user's criteria. Do not include unrelated events like availability blocks, recurring reminders, or administrative entries
+- ${willShowCalendarCards ? 'IMPORTANT: Since multiple calendar events will be shown as visual cards, provide only a brief introductory response (1-2 sentences max) like "Here are your meetings with [person]:" or "I found [number] meetings:". Do NOT list detailed meeting information, times, or attendees as this will be shown in the calendar cards below.' : 'When showing calendar events, provide detailed information about times, attendees, and locations.'}
+- When showing multiple calendar events, prioritize those with:
+  * Actual meeting participants (attendees)
+  * Specific meeting titles (not just "Available" or generic blocks)
+  * Events that match the person/topic mentioned in the query
 - Pay close attention to the conversation history to understand what the user is referring to
 - For questions about specific people or companies mentioned in previous messages, prioritize information about those entities
 - When asked for contact details (like email addresses), provide the specific information requested rather than listing all available contacts
@@ -726,6 +744,7 @@ Instructions:
 - If the user asks for someone's email address and you find it, provide just that email address clearly
 - Include relevant context and details when found
 - If no specific information is found, clearly state that
+- For meeting queries, show only the most relevant meetings that match the person or criteria mentioned
 
 Answer:`;
 
