@@ -1010,36 +1010,33 @@ const ChatPage = () => {
 
               <div className="border-t bg-background p-6">
                 <div className="mx-auto max-w-3xl">
-                  <div className="space-y-4">
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="Send a message..."
-                        className="flex h-16 w-full rounded-lg border border-input bg-background px-6 py-4 text-base shadow-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pr-14"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                            e.preventDefault()
-                            const content = e.currentTarget.value
-                            e.currentTarget.value = ''
-                            sendMessage(content)
-                          }
-                        }}
-                      />
-                      <button 
-                        onClick={(e) => {
-                          const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement
-                          if (input && input.value.trim()) {
-                            const content = input.value
-                            input.value = ''
-                            sendMessage(content)
-                          }
-                        }}
-                        className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        <Send className="h-5 w-5" />
-                      </button>
-                    </div>
-                    <SyncChips />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Send a message..."
+                      className="flex h-16 w-full rounded-lg border border-input bg-background px-6 py-4 text-base shadow-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pr-14"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                          e.preventDefault()
+                          const content = e.currentTarget.value
+                          e.currentTarget.value = ''
+                          sendMessage(content)
+                        }
+                      }}
+                    />
+                    <button 
+                      onClick={(e) => {
+                        const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement
+                        if (input && input.value.trim()) {
+                          const content = input.value
+                          input.value = ''
+                          sendMessage(content)
+                        }
+                      }}
+                      className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <Send className="h-5 w-5" />
+                    </button>
                   </div>
                 </div>
               </div>

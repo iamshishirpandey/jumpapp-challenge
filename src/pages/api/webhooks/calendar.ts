@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '@/lib/prisma';
 import { CalendarService } from '@/lib/services/calendar';
 import { EmbeddingService } from '@/lib/services/embeddings';
+import { CalendarEmailNotificationService } from '@/lib/services/calendar-email-notifications';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -52,6 +53,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Fetch updated calendar events
     const calendarService = new CalendarService(user.googleRefreshToken);
     const embeddingService = new EmbeddingService();
+    const notificationService = new CalendarEmailNotificationService();
 
     // Get events from the last 24 hours and next 7 days to capture updates
     const now = new Date();
@@ -69,10 +71,49 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       100
     );
 
-    // Process events for RAG
+    // Process events for RAG and handle email notifications
     const embeddings = await Promise.allSettled(
       events.map(async (event) => {
         try {
+          // Check if this is a new or updated event that needs email notification
+          const existingEvent = await prisma.calendarEvent.findFirst({
+            where: { 
+              googleEventId: event.googleEventId,
+              userId: user.id
+            }
+          });
+
+          const isNewEvent = !existingEvent;
+          const isUpdatedEvent = existingEvent && 
+            new Date(existingEvent.googleUpdatedAt).getTime() < new Date(event.googleUpdatedAt).getTime();
+
+          // Send email notifications for new/updated events with attendees
+          if ((isNewEvent || isUpdatedEvent) && event.attendees && event.attendees.length > 0) {
+            try {
+              const emailType = isNewEvent ? 'created' : 'updated';
+              console.log(`Sending ${emailType} notification for event: ${event.summary}`);
+              
+              const notificationResult = await notificationService.sendAppointmentNotifications(
+                user.id,
+                {
+                  summary: event.summary || 'Untitled Event',
+                  description: event.description,
+                  startDateTime: event.startDateTime,
+                  endDateTime: event.endDateTime,
+                  location: event.location,
+                  attendees: event.attendees,
+                  organizer: event.organizer
+                },
+                emailType
+              );
+
+              console.log(`Email notification result:`, notificationResult);
+            } catch (emailError) {
+              console.error('Error sending email notification:', emailError);
+              // Continue processing even if email fails
+            }
+          }
+
           await embeddingService.processEventForRAG(user.id, event);
           return event;
         } catch (error) {

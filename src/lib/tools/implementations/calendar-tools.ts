@@ -1,5 +1,6 @@
 import { calendar_v3, google } from 'googleapis'
 import { prisma } from '@/lib/prisma'
+import { CalendarEmailNotificationService } from '@/lib/services/calendar-email-notifications'
 
 async function getCalendarClient(userId: string): Promise<calendar_v3.Calendar> {
   const user = await prisma.user.findUnique({
@@ -85,11 +86,38 @@ export async function createCalendarEvent(parameters: Record<string, any>, userI
       sendUpdates: sendNotifications ? 'all' : 'none'
     })
 
+    // Send AI-generated email notifications to attendees if there are any
+    if (attendeeList.length > 0) {
+      try {
+        console.log('📧 Sending AI-generated email notifications for chat-created appointment');
+        const notificationService = new CalendarEmailNotificationService();
+        
+        const notificationResult = await notificationService.sendAppointmentNotifications(
+          userId,
+          {
+            summary: title,
+            description,
+            startDateTime: new Date(startDateTime),
+            endDateTime: new Date(endDateTime),
+            location,
+            attendees: attendeeList,
+            organizer: null
+          },
+          'created'
+        );
+
+        console.log('Email notification result:', notificationResult);
+      } catch (emailError) {
+        console.error('Error sending AI-generated email notifications:', emailError);
+        // Continue even if email fails - the event was still created successfully
+      }
+    }
+
     return {
       eventId: response.data.id,
       eventUrl: response.data.htmlLink,
       success: true,
-      message: `Event "${title}" created successfully`,
+      message: `Event "${title}" created successfully${attendeeList.length > 0 ? ' and invitations sent' : ''}`,
       startTime: startDateTime,
       endTime: endDateTime,
       attendees: attendeeList.map((a: any) => a.email)
@@ -276,10 +304,40 @@ export async function updateCalendarEvent(parameters: Record<string, any>, userI
       sendUpdates: 'all'
     })
 
+    // Send AI-generated update notifications to attendees if there are any
+    if (response.data.attendees && response.data.attendees.length > 0) {
+      try {
+        console.log('📧 Sending AI-generated update notifications for chat-updated appointment');
+        const notificationService = new CalendarEmailNotificationService();
+        
+        const startDate = response.data.start?.dateTime ? new Date(response.data.start.dateTime) : new Date();
+        const endDate = response.data.end?.dateTime ? new Date(response.data.end.dateTime) : new Date();
+        
+        const notificationResult = await notificationService.sendAppointmentNotifications(
+          userId,
+          {
+            summary: response.data.summary || 'Untitled Event',
+            description: response.data.description,
+            startDateTime: startDate,
+            endDateTime: endDate,
+            location: response.data.location,
+            attendees: response.data.attendees,
+            organizer: response.data.organizer
+          },
+          'updated'
+        );
+
+        console.log('Email update notification result:', notificationResult);
+      } catch (emailError) {
+        console.error('Error sending AI-generated update notifications:', emailError);
+        // Continue even if email fails - the event was still updated successfully
+      }
+    }
+
     return {
       eventId: response.data.id,
       success: true,
-      message: `Event updated successfully`,
+      message: `Event updated successfully${response.data.attendees && response.data.attendees.length > 0 ? ' and notifications sent' : ''}`,
       updatedFields: { title, description, startDateTime, endDateTime, location }
     }
   } catch (error) {
